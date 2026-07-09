@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Space {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  type        String   @default("scrum")
+  icon        String?
+  memberCount Int      @default(0)
+  issueCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  issues              Issue[]
+  members             SpaceMember[]
+  statuses            Status[]
+  labels              Label[]
+  filters             Filter[]
+  workflowTransitions WorkflowTransition[]
+
+  @@map("spaces")
+}
+
+model Status {
+  id       String @id @default(uuid())
+  name     String
+  category String
+  color    String @default("#6B7280")
+  order    Int    @default(0)
+  spaceId  String
+  space    Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  issues   Issue[]
+  transitionsFrom WorkflowTransition[] @relation("FromStatus")
+  transitionsTo   WorkflowTransition[] @relation("ToStatus")
+
+  @@map("statuses")
+}
+
+model WorkflowTransition {
+  id           String @id @default(uuid())
+  spaceId      String
+  fromStatusId String
+  toStatusId   String
+  name         String @default("")
+  createdAt    DateTime @default(now())
+  space        Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  fromStatus   Status @relation("FromStatus", fields: [fromStatusId], references: [id], onDelete: Cascade)
+  toStatus     Status @relation("ToStatus",   fields: [toStatusId],   references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, fromStatusId, toStatusId])
+  @@index([spaceId])
+  @@map("workflow_transitions")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  firstName   String
+  lastName    String
+  displayName String?
+  password    String   @default("changeme123")
+  role        String   @default("agent")
+  isActive    Boolean  @default(true)
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  spaceMembers   SpaceMember[]
+  assignedIssues Issue[]   @relation("AssignedIssues")
+  reportedIssues Issue[]   @relation("ReportedIssues")
+  comments       Comment[]
+  filters        Filter[]
+
+  @@map("users")
+}
+
+model SpaceMember {
+  id      String @id @default(uuid())
+  spaceId String
+  userId  String
+  role    String @default("agent")
+  space   Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, userId])
+  @@map("space_members")
+}
+
+model Issue {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  summary     String
+  description String?
+  type        String   @default("task")
+  workType    String?
+  priority    String   @default("medium")
+  spaceId     String
+  statusId    String?
+  assigneeId  String?
+  reporterId  String?
+  parentKey   String?
+  labels      String[] @default([])
+
+  productType      String?
+  combination      String?
+  rootCause        String?
+  fixDescription   String?
+  manageClientName String?
+  customerPlan     String?
+  testEnvironment  String?
+  testSteps        Json?
+
+  customerName     String?
+  clientName       String?
+  projectManager   String?
+
+  dueDate   DateTime?
+  cf_key    String?   @map("cf_key")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  space    Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  status   Status?  @relation(fields: [statusId], references: [id], onDelete: SetNull)
+  assignee User?    @relation("AssignedIssues", fields: [assigneeId], references: [id], onDelete: SetNull)
+  reporter User?    @relation("ReportedIssues", fields: [reporterId], references: [id], onDelete: SetNull)
+  comments    Comment[]
+  attachments Attachment[]
+  history     IssueHistory[]
+
+  @@index([spaceId])
+  @@index([assigneeId])
+  @@index([statusId])
+  @@index([type])
+  @@index([priority])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("issues")
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  body        String
+  issueId     String
+  authorId    String?
+  authorName  String?
+  authorEmail String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  issue  Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([issueId])
+  @@map("comments")
+}
+
+model Label {
+  id      String @id @default(uuid())
+  name    String
+  color   String @default("#6366F1")
+  spaceId String
+  space   Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  @@unique([spaceId, name])
+  @@map("labels")
+}
+
+model Filter {
+  id        String   @id @default(uuid())
+  name      String
+  criteria  Json     @default("{}")
+  ownerId   String?
+  ownerName String?
+  starredBy String[] @default([])
+  spaceId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner User?  @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  space Space? @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+
+  @@map("filters")
+}
+
+model IssueLink {
+  id         String @id @default(uuid())
+  sourceKey  String
+  targetKey  String
+  linkType   String @default("relates")
+  createdAt  DateTime @default(now())
+
+  @@unique([sourceKey, targetKey, linkType])
+  @@index([sourceKey])
+  @@index([targetKey])
+  @@map("issue_links")
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  issueId   String
+  commentId String?
+  filename  String
+  url       String
+  mimeType  String?
+  size      Int?
+  jiraId    String?
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@map("attachments")
+}
+
+model IssueHistory {
+  id        String   @id @default(uuid())
+  issueId   String
+  field     String
+  oldValue  String?
+  newValue  String?
+  authorName  String?
+  authorEmail String?
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([createdAt])
+  @@map("issue_history")
+}
+
+model DeletedSpace {
+  key       String   @id
+  deletedAt DateTime @default(now())
+
+  @@map("deleted_spaces")
+}
+
+model IssueWatch {
+  id        String   @id @default(uuid())
+  issueKey  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([issueKey, userId])
+  @@index([issueKey])
+  @@index([userId])
+  @@map("issue_watches")
+}
+
+model NotificationPreference {
+  id                String  @id @default(uuid())
+  userId            String  @unique
+  onAssigned        Boolean @default(true)
+  onCommented       Boolean @default(true)
+  onStatusChanged   Boolean @default(true)
+  onMentioned       Boolean @default(true)
+  onWatchedUpdated  Boolean @default(true)
+  onCreated         Boolean @default(true)
+  onUpdated         Boolean @default(false)
+
+  @@map("notification_preferences")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // ASSIGNED, COMMENTED, STATUS_CHANGED, CREATED, UPDATED, DELETED, MENTIONED
+  title     String
+  message   String?
+  issueKey  String?
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model ApiToken {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  tokenHash   String   @unique   // SHA-256 hash of the actual token
+  prefix      String             // First 8 chars shown to user (e.g. "nta_Ab3x")
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("api_tokens")
+}
+
+model SlaDefinition {
+  id              String   @id @default(uuid())
+  spaceId         String
+  name            String
+  status          String   @default("active")  // active | inactive
+  startCondition  String?
+  pauseStatuses   Json     @default("[]")       // string[]
+  stopCondition   String?
+  goals           Json     @default("[]")       // SLAGoal[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([spaceId])
+  @@map("sla_definitions")
+}

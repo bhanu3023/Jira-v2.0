@@ -1,0 +1,1003 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { api } from '@/lib/api';
+import {
+  ArrowLeft, Users, Clock, Plus, X, Check, Search,
+  Trash2, Calendar, ChevronRight, Edit2, AlertCircle, RefreshCw, Mail, Link2, Unlink
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+type SLAGoal = { id: string; priority: string; timeValue: string; timeUnit: 'minutes' | 'hours' | 'days' };
+type SLAPolicy = {
+  id: string; name: string; goals: SLAGoal[];
+  startCondition?: string; pauseCondition?: string; stopCondition?: string;
+  enabled?: boolean;
+};
+type CustomQueue = {
+  id: string; name: string; memberIds: string[]; suspendedIds?: string[];
+  sla?: { timeValue: string; timeUnit: 'minutes' | 'hours' | 'days' };
+  slaPolicies?: SLAPolicy[];
+};
+
+const ALL_PRIORITIES = ['Highest', 'High', 'Medium', 'Low', 'Lowest'];
+const COLORS = ['bg-blue-500','bg-purple-500','bg-green-500','bg-orange-500','bg-rose-500','bg-teal-500','bg-indigo-500','bg-amber-500'];
+const avatarColor = (name: string) => COLORS[(name||'').charCodeAt(0) % COLORS.length];
+const mkInitials = (f: string, l: string) => `${(f||'')[0]||''}${(l||'')[0]||''}`.toUpperCase();
+
+const PRIORITY_META: Record<string, { color: string; icon: string }> = {
+  Highest: { color: 'text-red-600',    icon: '▲' },
+  High:    { color: 'text-orange-500', icon: '▲' },
+  Medium:  { color: 'text-blue-500',   icon: '▬' },
+  Low:     { color: 'text-blue-400',   icon: '▼' },
+  Lowest:  { color: 'text-gray-400',   icon: '▼' },
+};
+
+const mkPolicy = (name: string, startCond: string, pauseCond: string, stopCond: string): SLAPolicy => ({
+  id: `sla_${Date.now()}`,
+  name,
+  startCondition: startCond,
+  pauseCondition: pauseCond,
+  stopCondition: stopCond,
+  goals: ALL_PRIORITIES.map(p => ({ id: `g_${Date.now()}_${p}`, priority: p, timeValue: '', timeUnit: 'hours' })),
+});
+
+/* ─── Create SLA Modal ─── */
+function CreateSLAModal({ onClose, onCreate }: { onClose: () => void; onCreate: (p: SLAPolicy) => void }) {
+  const [name, setName] = useState('');
+  const [start, setStart] = useState('Issue created');
+  const [pause, setPause] = useState('Status = Waiting for customer');
+  const [stop, setStop] = useState('Status = Resolved OR Status = Closed');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-[520px] p-7" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-[18px] font-bold text-gray-900">Create SLA</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[12.5px] font-semibold text-gray-700 mb-1.5">SLA name <span className="text-red-500">*</span></label>
+            <input autoFocus value={name} onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onCreate(mkPolicy(name.trim(), start, pause, stop)); }}
+              placeholder="e.g. Time to first response"
+              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-[13px] text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-gray-700 mb-1.5">Start condition</label>
+            <input value={start} onChange={e => setStart(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-[13px] text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-gray-50" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-gray-700 mb-1.5">Pause condition</label>
+            <input value={pause} onChange={e => setPause(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-[13px] text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-gray-50" />
+          </div>
+          <div>
+            <label className="block text-[12.5px] font-semibold text-gray-700 mb-1.5">Stop condition</label>
+            <input value={stop} onChange={e => setStop(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-[13px] text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-gray-50" />
+          </div>
+          <p className="text-[11.5px] text-blue-600 bg-blue-50 rounded-lg px-3 py-2">Goals (time targets per priority) can be configured after creation.</p>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <button onClick={onClose} className="px-5 py-2.5 text-[13px] font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={() => name.trim() && onCreate(mkPolicy(name.trim(), start, pause, stop))} disabled={!name.trim()}
+            className="px-5 py-2.5 bg-blue-600 text-white text-[13px] font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            Create SLA
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── SLA Detail View ─── */
+function SLADetail({ policy, onBack, onSave, onDelete }: {
+  policy: SLAPolicy;
+  onBack: () => void;
+  onSave: (p: SLAPolicy) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [goals, setGoals] = useState<SLAGoal[]>(policy.goals);
+  const [startCond, setStartCond] = useState(policy.startCondition || 'Issue created');
+  const [pauseCond, setPauseCond] = useState(policy.pauseCondition || 'Status = Waiting for customer');
+  const [stopCond, setStopCond] = useState(policy.stopCondition || 'Status = Resolved OR Status = Closed');
+  const [enabled, setEnabled] = useState(policy.enabled !== false); // default true
+  const configuredCount = goals.filter(g => g.timeValue).length;
+
+  const updateGoal = (priority: string, field: 'timeValue' | 'timeUnit', val: string) => {
+    setGoals(prev => prev.map(g => g.priority === priority ? { ...g, [field]: val } : g));
+  };
+
+  const handleToggleEnabled = () => {
+    const next = !enabled;
+    setEnabled(next);
+    onSave({ ...policy, goals, startCondition: startCond, pauseCondition: pauseCond, stopCondition: stopCond, enabled: next });
+  };
+
+  const handleSave = () => {
+    onSave({ ...policy, goals, startCondition: startCond, pauseCondition: pauseCond, stopCondition: stopCond, enabled });
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setGoals(policy.goals);
+    setStartCond(policy.startCondition || 'Issue created');
+    setPauseCond(policy.pauseCondition || 'Status = Waiting for customer');
+    setStopCond(policy.stopCondition || 'Status = Resolved OR Status = Closed');
+    setEnabled(policy.enabled !== false);
+    setEditing(false);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-8 py-8">
+      {/* Back + Edit header */}
+      <div className="flex items-center justify-between mb-6">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-[13px] text-blue-600 hover:text-blue-800 font-medium">
+          <ArrowLeft size={14} /> Back to SLAs
+        </button>
+        {!editing ? (
+          <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-medium text-gray-700 hover:bg-gray-100 transition-colors">
+            <Edit2 size={13} /> Edit
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-[13px] font-medium hover:bg-blue-700 transition-colors">
+              <Check size={13} /> Save changes
+            </button>
+            <button onClick={handleCancel} className="px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-medium text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
+          </div>
+        )}
+      </div>
+
+      {/* SLA header card */}
+      <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 mb-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Clock size={20} className="text-blue-500" />
+            <h1 className="text-[20px] font-bold text-gray-900">{policy.name}</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-[12.5px] text-gray-500">{configuredCount} goal{configuredCount !== 1 ? 's' : ''}</span>
+            {/* Enable / Disable toggle */}
+            <div className="flex items-center gap-2.5">
+              <span className={`text-[12.5px] font-semibold ${enabled ? 'text-emerald-700' : 'text-gray-400'}`}>
+                {enabled ? 'Enabled' : 'Disabled'}
+              </span>
+              <button
+                onClick={handleToggleEnabled}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                title={enabled ? 'Click to disable SLA' : 'Click to enable SLA'}
+              >
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+            <span className={`inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-3 py-1 ${enabled ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-gray-500 bg-gray-100 border border-gray-200'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+              {enabled ? 'active' : 'inactive'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Goals section */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-5">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h2 className="text-[14px] font-bold text-gray-900">Goals</h2>
+          <p className="text-[12px] text-gray-500 mt-0.5">Work items will be checked against this list, top to bottom, and assigned a time goal based on the first matching priority.</p>
+        </div>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50">
+              <th className="text-left px-6 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Apply to work items</th>
+              <th className="text-left px-6 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Calendar</th>
+              <th className="text-left px-6 py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Time Target</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {goals.map(goal => {
+              const meta = PRIORITY_META[goal.priority] || { color: 'text-gray-500', icon: '•' };
+              return (
+                <tr key={goal.priority} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-6 py-3.5">
+                    <span className={cn('flex items-center gap-2 text-[13px] font-medium', meta.color)}>
+                      <span className="text-[10px]">{meta.icon}</span>{goal.priority}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <span className="flex items-center gap-1.5 text-[12.5px] text-gray-500">
+                      <Calendar size={13} className="text-gray-400" />24/7 Calendar (Default)
+                    </span>
+                  </td>
+                  <td className="px-6 py-3.5">
+                    {editing ? (
+                      <div className="flex items-center gap-2">
+                        <input type="number" min="1" max="9999" value={goal.timeValue}
+                          onChange={e => updateGoal(goal.priority, 'timeValue', e.target.value)}
+                          placeholder="—"
+                          className="w-20 border border-gray-200 rounded-lg px-3 py-1.5 text-[13px] focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" />
+                        <select value={goal.timeUnit} onChange={e => updateGoal(goal.priority, 'timeUnit', e.target.value)}
+                          className="border border-gray-200 rounded-lg px-3 py-1.5 text-[13px] focus:outline-none focus:border-blue-400 bg-white">
+                          <option value="minutes">min</option>
+                          <option value="hours">h</option>
+                          <option value="days">d</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <span className={`text-[13px] font-semibold ${goal.timeValue ? 'text-gray-800' : 'text-gray-300'}`}>
+                        {goal.timeValue ? `${goal.timeValue}${goal.timeUnit === 'hours' ? 'h' : goal.timeUnit === 'days' ? 'd' : 'min'}` : '—'}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {/* All remaining */}
+            <tr className="hover:bg-gray-50/50 transition-colors">
+              <td className="px-6 py-3.5"><span className="text-[13px] font-medium text-orange-600">All remaining work items</span></td>
+              <td className="px-6 py-3.5"><span className="flex items-center gap-1.5 text-[12.5px] text-gray-500"><Calendar size={13} className="text-gray-400" />24/7 Calendar (Default)</span></td>
+              <td className="px-6 py-3.5"><span className="text-[13px] text-gray-300">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Conditions section */}
+      <div className="bg-white rounded-xl border border-gray-200 px-6 py-5 mb-5">
+        <h2 className="text-[14px] font-bold text-gray-900 mb-1">Conditions</h2>
+        <p className="text-[12px] text-gray-500 mb-5">Time will be measured based on when start/stop/pause conditions are met.</p>
+        <div className="space-y-5">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-0.5 text-emerald-600">START CONDITION</p>
+            <p className="text-[11.5px] text-gray-400 mb-2">When does the SLA clock start?</p>
+            <input value={startCond} onChange={e => setStartCond(e.target.value)}
+              className="w-full max-w-md font-mono text-[12.5px] bg-white border border-emerald-300 rounded-lg px-3 py-2 text-gray-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-0.5 text-amber-600">PAUSE CONDITION</p>
+            <p className="text-[11.5px] text-gray-400 mb-2">When does the SLA clock pause?</p>
+            <input value={pauseCond} onChange={e => setPauseCond(e.target.value)}
+              className="w-full max-w-md font-mono text-[12.5px] bg-white border border-amber-300 rounded-lg px-3 py-2 text-gray-700 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-0.5 text-red-500">STOP CONDITION</p>
+            <p className="text-[11.5px] text-gray-400 mb-2">When does the SLA clock stop?</p>
+            <input value={stopCond} onChange={e => setStopCond(e.target.value)}
+              className="w-full max-w-md font-mono text-[12.5px] bg-white border border-red-300 rounded-lg px-3 py-2 text-gray-700 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100" />
+          </div>
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button onClick={handleSave}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-[13px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            <Check size={13} /> Save conditions
+          </button>
+        </div>
+      </div>
+
+      {/* Delete */}
+      <div className="flex justify-end">
+        <button onClick={() => { onDelete(policy.id); onBack(); }}
+          className="flex items-center gap-1.5 text-[12.5px] text-red-500 hover:text-red-700 px-4 py-2 rounded-lg hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors">
+          <Trash2 size={13} /> Delete SLA
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── SLA List Tab ─── */
+function SLATab({ queue, policies, savedMsg, savePolicies }: {
+  queue: { name: string };
+  policies: SLAPolicy[];
+  savedMsg: string;
+  savePolicies: (p: SLAPolicy[]) => void;
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
+
+  const detailPolicy = detailId ? policies.find(p => p.id === detailId) : null;
+
+  const handleCreate = (p: SLAPolicy) => {
+    savePolicies([...policies, p]);
+    setShowModal(false);
+    setDetailId(p.id);
+  };
+
+  const handleSave = (updated: SLAPolicy) => {
+    savePolicies(policies.map(p => p.id === updated.id ? updated : p));
+  };
+
+  const handleDelete = (id: string) => {
+    savePolicies(policies.filter(p => p.id !== id));
+    setDetailId(null);
+  };
+
+  if (detailPolicy) {
+    return <SLADetail policy={detailPolicy} onBack={() => setDetailId(null)} onSave={handleSave} onDelete={handleDelete} />;
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-8 py-8">
+      {showModal && <CreateSLAModal onClose={() => setShowModal(false)} onCreate={handleCreate} />}
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-[20px] font-bold text-gray-900">SLAs</h1>
+          <p className="text-[13px] text-gray-500 mt-0.5">Define service level agreements to ensure timely responses and resolutions.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {savedMsg && <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-emerald-600"><Check size={14} />{savedMsg}</span>}
+          <button onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-[13px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            <Plus size={14} /> Create SLA
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="grid grid-cols-[2fr_3fr_2fr_1fr] border-b border-gray-200 bg-gray-50 px-5 py-3">
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">SLA Name</span>
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Goals</span>
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Start Condition</span>
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status</span>
+        </div>
+
+        {policies.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <Clock size={32} className="text-gray-200 mb-3" />
+            <p className="text-[15px] font-semibold text-gray-400">No SLAs configured</p>
+            <p className="text-[12.5px] text-gray-400 mt-1">Create your first SLA to track response times.</p>
+          </div>
+        ) : (
+          policies.map(policy => {
+            const configured = policy.goals.filter(g => g.timeValue);
+            return (
+              <div key={policy.id}
+                className="grid grid-cols-[2fr_3fr_2fr_1fr] items-center px-5 py-4 border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer transition-colors group"
+                onClick={() => setDetailId(policy.id)}>
+                <div className="flex items-center gap-2.5">
+                  <Clock size={15} className="text-blue-500 flex-shrink-0" />
+                  <span className="text-[13.5px] font-semibold text-blue-600 group-hover:underline">{policy.name}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {configured.length > 0
+                    ? configured.map(g => {
+                        const meta = PRIORITY_META[g.priority] || { color: 'text-gray-500', icon: '•' };
+                        return (
+                          <span key={g.priority} className={cn('text-[11.5px] font-semibold', meta.color)}>
+                            {g.priority}: {g.timeValue}{g.timeUnit === 'hours' ? 'h' : g.timeUnit === 'days' ? 'd' : 'm'}
+                          </span>
+                        );
+                      })
+                    : <span className="text-[12px] text-gray-300 italic">No goals set — click to configure</span>}
+                </div>
+                <div>
+                  <span className="text-[12.5px] text-gray-500">{policy.startCondition || 'Issue created'}</span>
+                </div>
+                <div onClick={e => e.stopPropagation()}>
+                  {policy.enabled !== false ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Active
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2.5 py-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />Inactive
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Queue Email Tab ─── */
+function QueueEmailTab({ spaceKey, queueName }: { spaceKey: string; queueName: string }) {
+  const [allEmails, setAllEmails] = useState<any[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [saving, setSaving]       = useState<string | null>(null);
+  const [savedMsg, setSavedMsg]   = useState('');
+
+  const linked    = allEmails.filter(e => e.department?.toLowerCase() === queueName.toLowerCase());
+  const unlinked  = allEmails.filter(e => !e.department || e.department.toLowerCase() !== queueName.toLowerCase());
+
+  useEffect(() => {
+    api.request<any[]>(`/email-addresses/${spaceKey}`)
+      .then(rows => setAllEmails(rows || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [spaceKey]);
+
+  const flash = (msg: string) => { setSavedMsg(msg); setTimeout(() => setSavedMsg(''), 2000); };
+
+  const linkEmail = async (emailId: string) => {
+    setSaving(emailId);
+    try {
+      await api.request(`/email-addresses/${spaceKey}/${emailId}`, { method: 'PATCH', body: JSON.stringify({ department: queueName }) });
+      setAllEmails(prev => prev.map(e => e.id === emailId ? { ...e, department: queueName } : e));
+      flash('Linked');
+    } catch { flash('Failed'); }
+    setSaving(null);
+  };
+
+  const unlinkEmail = async (emailId: string) => {
+    setSaving(emailId);
+    try {
+      await api.request(`/email-addresses/${spaceKey}/${emailId}`, { method: 'PATCH', body: JSON.stringify({ department: null }) });
+      setAllEmails(prev => prev.map(e => e.id === emailId ? { ...e, department: null } : e));
+      flash('Unlinked');
+    } catch { flash('Failed'); }
+    setSaving(null);
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-[13px]">Loading…</div>;
+
+  return (
+    <div className="max-w-3xl mx-auto px-8 py-8">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h1 className="text-[20px] font-bold text-gray-900">Email</h1>
+          <p className="text-[13px] text-gray-500 mt-1">
+            Link email addresses to the <strong>{queueName}</strong> queue. Incoming emails to a linked address will create tickets here and be auto-assigned via Round Robin.
+          </p>
+        </div>
+        {savedMsg && <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-emerald-600"><Check size={14} />{savedMsg}</span>}
+      </div>
+
+      <p className="text-[12px] text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-6">
+        To add new email addresses, go to <strong>Space Settings → Email</strong>. Once added, link them to this queue below.
+      </p>
+
+      {/* Linked emails */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-100 bg-gray-50">
+          <Link2 size={14} className="text-blue-500" />
+          <span className="text-[13px] font-semibold text-gray-800">Linked to this queue</span>
+          <span className="text-[11px] font-medium text-gray-400 bg-gray-200 rounded-full px-2 py-0.5">{linked.length}</span>
+        </div>
+        {linked.length === 0 ? (
+          <div className="flex flex-col items-center py-10 text-center">
+            <Mail size={24} className="text-gray-200 mb-2" />
+            <p className="text-[13px] text-gray-400">No email addresses linked yet</p>
+            <p className="text-[12px] text-gray-400 mt-0.5">Link an address from the list below.</p>
+          </div>
+        ) : linked.map(email => (
+          <div key={email.id} className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                <Mail size={14} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-[13px] font-medium text-gray-800">{email.address}</p>
+                <p className="text-[11.5px] text-gray-400">{email.requestType || 'Emailed request'}</p>
+              </div>
+            </div>
+            <button onClick={() => unlinkEmail(email.id)} disabled={saving === email.id}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-40">
+              <Unlink size={13} /> {saving === email.id ? 'Saving…' : 'Unlink'}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* All other space emails */}
+      {unlinked.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-100 bg-gray-50">
+            <Mail size={14} className="text-gray-400" />
+            <span className="text-[13px] font-semibold text-gray-800">Other space emails</span>
+            <span className="text-[11px] font-medium text-gray-400 bg-gray-200 rounded-full px-2 py-0.5">{unlinked.length}</span>
+          </div>
+          {unlinked.map(email => (
+            <div key={email.id} className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                  <Mail size={14} className="text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-gray-700">{email.address}</p>
+                  <p className="text-[11.5px] text-gray-400">
+                    {email.department ? `Linked to: ${email.department}` : 'Not linked to any queue'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => linkEmail(email.id)} disabled={saving === email.id}
+                className="flex items-center gap-1.5 text-[12px] font-medium text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors disabled:opacity-40">
+                <Link2 size={13} /> {saving === email.id ? 'Saving…' : 'Link to this queue'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Round Robin Tab ─── */
+function RoundRobinTab({ spaceKey, queueName, spaceMembers }: {
+  spaceKey: string;
+  queueName: string;
+  spaceMembers: any[];
+}) {
+  const [agents, setAgents] = useState<Array<{
+    userId: string; name: string; email: string;
+    shiftStart: string; shiftEnd: string; isActive: boolean;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch] = useState('');
+  const [allDepts, setAllDepts] = useState<any[]>([]);
+  const [isDefault, setIsDefault] = useState(false);
+
+  // Load existing RR config for this department
+  useEffect(() => {
+    api.getRrConfig(spaceKey).then((res: any) => {
+      const depts: any[] = res?.config?.departments || [];
+      setAllDepts(depts);
+      const dept = depts.find((d: any) => d.name.toLowerCase() === queueName.toLowerCase());
+      if (dept) {
+        setIsDefault(!!dept.isDefault);
+        setAgents((dept.agents || []).map((a: any) => ({
+          userId: a.userId, name: a.name, email: a.email || '',
+          shiftStart: a.shiftStart || '', shiftEnd: a.shiftEnd || '',
+          isActive: a.isActive !== false,
+        })));
+      }
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [spaceKey, queueName]);
+
+  const persist = async (nextAgents: typeof agents, nextIsDefault = isDefault) => {
+    setSaving(true);
+    try {
+      const existing = allDepts.filter((d: any) => d.name.toLowerCase() !== queueName.toLowerCase());
+      const thisDept = {
+        name: queueName,
+        order: allDepts.find((d: any) => d.name.toLowerCase() === queueName.toLowerCase())?.order ?? existing.length,
+        isDefault: nextIsDefault,
+        agents: nextAgents.map((a, i) => ({ ...a, maxTickets: 10 })),
+        currentIndex: allDepts.find((d: any) => d.name.toLowerCase() === queueName.toLowerCase())?.currentIndex ?? 0,
+      };
+      const updated = [...existing, thisDept];
+      await api.saveRrConfig(spaceKey, updated);
+      setAllDepts(updated);
+      setAgents(nextAgents);
+      setIsDefault(nextIsDefault);
+      setSavedMsg('Saved');
+      setTimeout(() => setSavedMsg(''), 2000);
+    } catch { setSavedMsg('Failed to save'); setTimeout(() => setSavedMsg(''), 2500); }
+    finally { setSaving(false); }
+  };
+
+  const addAgent = (member: any) => {
+    const mb = member.user || member;
+    if (agents.find(a => a.userId === mb.id)) return;
+    const next = [...agents, { userId: mb.id, name: `${mb.firstName||''} ${mb.lastName||''}`.trim(), email: mb.email||'', shiftStart: '09:00', shiftEnd: '17:00', isActive: true }];
+    persist(next);
+    setSearch(''); setShowAdd(false);
+  };
+
+  const removeAgent = (userId: string) => persist(agents.filter(a => a.userId !== userId));
+  const toggleActive = (userId: string) => persist(agents.map(a => a.userId === userId ? { ...a, isActive: !a.isActive } : a));
+  const updateShift = (userId: string, field: 'shiftStart' | 'shiftEnd', val: string) =>
+    setAgents(prev => prev.map(a => a.userId === userId ? { ...a, [field]: val } : a));
+  const saveShift = (userId: string) => persist([...agents]);
+
+  const nonAdded = spaceMembers.filter(m => { const mb = m.user||m; return !agents.find(a => a.userId === mb.id); });
+  const filtered = nonAdded.filter(m => { const mb = m.user||m; const s = search.toLowerCase(); return !s || `${mb.firstName} ${mb.lastName}`.toLowerCase().includes(s) || (mb.email||'').toLowerCase().includes(s); });
+
+  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-[13px]">Loading…</div>;
+
+  return (
+    <div className="max-w-3xl mx-auto px-8 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-[20px] font-bold text-gray-900">Round Robin</h1>
+          <p className="text-[13px] text-gray-500 mt-1">
+            Tickets arriving in <strong>{queueName}</strong> are auto-assigned to agents in rotation based on their shift hours.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {savedMsg && <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-emerald-600"><Check size={14} />{savedMsg}</span>}
+          <button onClick={() => setShowAdd(v => !v)}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 text-white text-[13px] font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            <Plus size={14} /> Add agent
+          </button>
+        </div>
+      </div>
+
+      {/* Default queue toggle */}
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 mb-5 flex items-center justify-between">
+        <div>
+          <p className="text-[13px] font-semibold text-gray-800">Default queue for email tickets</p>
+          <p className="text-[12px] text-gray-500 mt-0.5">When an email arrives with no matching queue, it lands here and gets auto-assigned.</p>
+        </div>
+        <button onClick={() => persist(agents, !isDefault)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isDefault ? 'bg-blue-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform ${isDefault ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+
+      {/* Add agent search */}
+      {showAdd && (
+        <div className="bg-blue-50 rounded-xl border border-blue-200 p-4 mb-5">
+          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 focus-within:border-blue-500 mb-3">
+            <Search size={14} className="text-gray-400" />
+            <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search agents…"
+              className="flex-1 text-[13px] outline-none text-gray-700 placeholder:text-gray-400" />
+            <button onClick={() => { setShowAdd(false); setSearch(''); }}><X size={13} className="text-gray-400 hover:text-gray-600" /></button>
+          </div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {filtered.map(m => { const mb = m.user||m; return (
+              <div key={mb.id} onClick={() => addAgent(m)}
+                className="flex items-center gap-3 px-4 py-2.5 bg-white rounded-xl border border-gray-100 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-colors">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white ${avatarColor(mb.firstName||'')}`}>{mkInitials(mb.firstName||'',mb.lastName||'')}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-gray-800">{mb.firstName} {mb.lastName}</p>
+                  <p className="text-[11.5px] text-gray-400">{mb.email||''}</p>
+                </div>
+                <span className="text-[12px] text-blue-600 font-medium">+ Add</span>
+              </div>
+            );})}
+            {filtered.length === 0 && <p className="text-center text-[12.5px] text-gray-400 py-3">{search ? 'No matches' : 'All agents already added'}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Agent list */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="grid grid-cols-[2fr_1fr_1fr_1fr_80px] border-b border-gray-100 bg-gray-50 px-5 py-3">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Agent</span>
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Shift Start</span>
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Shift End</span>
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Status</span>
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider"></span>
+        </div>
+
+        {agents.length === 0 ? (
+          <div className="flex flex-col items-center py-14 text-center">
+            <RefreshCw size={28} className="text-gray-200 mb-3" />
+            <p className="text-[14px] font-medium text-gray-400">No agents configured</p>
+            <p className="text-[12.5px] text-gray-400 mt-1">Add agents to start auto-assigning incoming tickets.</p>
+          </div>
+        ) : (
+          agents.map(agent => (
+            <div key={agent.userId} className="grid grid-cols-[2fr_1fr_1fr_1fr_80px] items-center px-5 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 ${agent.isActive ? avatarColor(agent.name) : 'bg-gray-300'}`}>
+                  {mkInitials(agent.name.split(' ')[0]||'', agent.name.split(' ')[1]||'')}
+                </div>
+                <div>
+                  <p className={`text-[13px] font-medium ${agent.isActive ? 'text-gray-800' : 'text-gray-400'}`}>{agent.name}</p>
+                  <p className="text-[11px] text-gray-400">{agent.email}</p>
+                </div>
+              </div>
+              <div>
+                <input type="text" value={agent.shiftStart}
+                  onChange={e => updateShift(agent.userId, 'shiftStart', e.target.value)}
+                  onBlur={() => saveShift(agent.userId)}
+                  placeholder="09:00"
+                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12.5px] text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white w-[90px]" />
+              </div>
+              <div>
+                <input type="text" value={agent.shiftEnd}
+                  onChange={e => updateShift(agent.userId, 'shiftEnd', e.target.value)}
+                  onBlur={() => saveShift(agent.userId)}
+                  placeholder="17:00"
+                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12.5px] text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white w-[90px]" />
+              </div>
+              <div>
+                <button onClick={() => toggleActive(agent.userId)}
+                  className={`inline-flex items-center gap-1.5 text-[11.5px] font-medium rounded-full px-2.5 py-1 border transition-colors ${agent.isActive ? 'text-green-700 bg-green-50 border-green-200 hover:bg-green-100' : 'text-gray-500 bg-gray-100 border-gray-200 hover:bg-gray-200'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${agent.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  {agent.isActive ? 'Active' : 'Paused'}
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button onClick={() => removeAgent(agent.userId)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+        <p className="text-[12px] text-blue-700">
+          <strong>How it works:</strong> When a ticket arrives in this queue, it is assigned to the next active agent in the list whose shift is currently active.
+          If no agent is on shift, it falls back to all active agents. Tickets from email are auto-assigned; manually created tickets follow the same rotation.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Main Page ─── */
+export default function QueueSettingsPage() {
+  const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const spaceKey = (params?.spaceKey as string || '').toUpperCase();
+  const queueId = params?.queueId as string || '';
+  const initialTab = (searchParams?.get('tab') || 'people') as 'people' | 'sla' | 'rr' | 'email';
+
+  const [tab, setTab] = useState<'people' | 'sla' | 'rr' | 'email'>(initialTab);
+  const [queue, setQueue] = useState<CustomQueue | null>(null);
+  const [spaceMembers, setSpaceMembers] = useState<any[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [spaceName, setSpaceName] = useState('');
+  const [savedMsg, setSavedMsg] = useState('');
+  const [policies, setPolicies] = useState<SLAPolicy[]>([]);
+  const [dbSlaIds, setDbSlaIds] = useState<Record<string, string>>({}); // policyId → DB id
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
+      if (stored) {
+        const queues: CustomQueue[] = JSON.parse(stored);
+        const q = queues.find(q => q.id === queueId);
+        if (q) { setQueue(q); setPolicies(q.slaPolicies || []); }
+      }
+    } catch {}
+    // Also load from DB to get DB ids for update/delete
+    api.getSLAs(spaceKey).then((rows: any[]) => {
+      const map: Record<string, string> = {};
+      rows.forEach(r => { if (r.dept_name) map[r.dept_name + ':' + r.name] = r.id; });
+      setDbSlaIds(map);
+    }).catch(() => {});
+  }, [spaceKey, queueId]);
+
+  useEffect(() => {
+    api.getSpace(spaceKey).then((sp: any) => {
+      setSpaceName(sp?.name || spaceKey);
+      setSpaceMembers(sp?.members || []);
+    }).catch(() => {});
+  }, [spaceKey]);
+
+  const persistQueue = (updated: CustomQueue) => {
+    try {
+      const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
+      const queues: CustomQueue[] = stored ? JSON.parse(stored) : [];
+      const next = queues.map(q => q.id === queueId ? updated : q);
+      localStorage.setItem(`custom_queues_${spaceKey}`, JSON.stringify(next));
+      setQueue(updated);
+    } catch {}
+  };
+
+  const savePolicies = async (p: SLAPolicy[]) => {
+    if (!queue) return;
+    const updated = { ...queue, slaPolicies: p };
+    persistQueue(updated);
+    setPolicies(p);
+    // Persist each policy to DB so SLA timings work in Sent/Watching
+    const newIds = { ...dbSlaIds };
+    for (const policy of p) {
+      const dbKey = queue.name + ':' + policy.name;
+      const goals = policy.goals.filter(g => g.timeValue).map(g => ({
+        id: g.id, isPriorityGroup: false,
+        priorityRows: [{ priority: g.priority, timeValue: g.timeValue, timeUnit: g.timeUnit }],
+        timeValue: g.timeValue, timeUnit: g.timeUnit,
+      }));
+      // Build a single isPriorityGroup goal with all priorities
+      const priorityGoal = {
+        id: `pg_${policy.id}`,
+        isPriorityGroup: true,
+        priorityRows: policy.goals.filter(g => g.timeValue).map(g => ({ priority: g.priority.toLowerCase(), timeValue: g.timeValue, timeUnit: g.timeUnit })),
+      };
+      const payload = {
+        name: policy.name,
+        status: policy.enabled !== false ? 'active' : 'inactive',
+        dept_name: queue.name,
+        startCondition: policy.startCondition || null,
+        pauseStatuses: [],
+        stopCondition: policy.stopCondition || null,
+        goals: policy.goals.some(g => g.timeValue) ? [priorityGoal] : [],
+      };
+      try {
+        if (newIds[dbKey]) {
+          await api.updateSLA(spaceKey, newIds[dbKey], payload);
+        } else {
+          const created = await api.createSLA(spaceKey, payload);
+          if (created?.id) newIds[dbKey] = created.id;
+        }
+      } catch { /* non-critical — localStorage copy still works */ }
+    }
+    setDbSlaIds(newIds);
+    setSavedMsg('Saved');
+    setTimeout(() => setSavedMsg(''), 2000);
+  };
+
+  const removeMember  = (id: string) => { if (!queue) return; persistQueue({ ...queue, memberIds: queue.memberIds.filter(x => x !== id), suspendedIds: (queue.suspendedIds||[]).filter(x => x !== id) }); };
+  const suspendMember = (id: string) => { if (!queue) return; persistQueue({ ...queue, suspendedIds: [...(queue.suspendedIds||[]), id] }); };
+  const reactivate    = (id: string) => { if (!queue) return; persistQueue({ ...queue, suspendedIds: (queue.suspendedIds||[]).filter(x => x !== id) }); };
+  const addMember     = (id: string) => { if (!queue) return; persistQueue({ ...queue, memberIds: [...queue.memberIds, id] }); setMemberSearch(''); setShowAddMember(false); };
+
+  if (!queue) return <div className="flex items-center justify-center h-screen text-gray-400 text-[13px]">Loading queue…</div>;
+
+  const members = spaceMembers.filter(m => { const mb = m.user||m; return queue.memberIds.includes(mb.id); });
+  const nonMembers = spaceMembers.filter(m => { const mb = m.user||m; return !queue.memberIds.includes(mb.id); });
+  const suspended = queue.suspendedIds || [];
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {/* Left sidebar */}
+      <div className="w-56 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
+        <div className="px-4 py-4 border-b border-gray-100">
+          <button onClick={() => router.push(`/spaces/${spaceKey}`)}
+            className="flex items-center gap-2 text-[12.5px] text-gray-500 hover:text-gray-900 transition-colors">
+            <ArrowLeft size={14} /><span>{spaceName || spaceKey}</span>
+          </button>
+        </div>
+        <div className="px-4 py-4 border-b border-gray-100">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Queue</p>
+          <p className="text-[14px] font-bold text-gray-900">{queue.name}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">{queue.memberIds.length} member{queue.memberIds.length !== 1 ? 's' : ''}</p>
+        </div>
+        <nav className="flex-1 px-2 py-3 space-y-0.5">
+          <button onClick={() => setTab('people')}
+            className={cn('flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors',
+              tab === 'people' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900')}>
+            <Users size={15} className={tab === 'people' ? 'text-blue-600' : 'text-gray-400'} />
+            People &amp; Access
+          </button>
+          <button onClick={() => setTab('sla')}
+            className={cn('flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors',
+              tab === 'sla' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900')}>
+            <Clock size={15} className={tab === 'sla' ? 'text-blue-600' : 'text-gray-400'} />
+            SLAs
+          </button>
+          <button onClick={() => setTab('rr')}
+            className={cn('flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors',
+              tab === 'rr' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900')}>
+            <RefreshCw size={15} className={tab === 'rr' ? 'text-blue-600' : 'text-gray-400'} />
+            Round Robin
+          </button>
+          <button onClick={() => setTab('email')}
+            className={cn('flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors',
+              tab === 'email' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900')}>
+            <Mail size={15} className={tab === 'email' ? 'text-blue-600' : 'text-gray-400'} />
+            Email
+          </button>
+        </nav>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* ── PEOPLE & ACCESS ── */}
+        {tab === 'people' && (
+          <div className="max-w-3xl mx-auto px-8 py-8">
+            <div className="mb-6">
+              <h1 className="text-[20px] font-bold text-gray-900">People &amp; Access</h1>
+              <p className="text-[13px] text-gray-500 mt-1">Manage who has access to the <strong>{queue.name}</strong> queue.</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden mb-6">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-[14px] font-semibold text-gray-800">Members</h2>
+                  <span className="text-[11.5px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{members.length}</span>
+                </div>
+                <button onClick={() => setShowAddMember(v => !v)}
+                  className="flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                  <Plus size={13} /> Add member
+                </button>
+              </div>
+              {showAddMember && (
+                <div className="px-6 py-4 border-b border-gray-100 bg-blue-50">
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 focus-within:border-blue-500">
+                    <Search size={14} className="text-gray-400" />
+                    <input autoFocus value={memberSearch} onChange={e => setMemberSearch(e.target.value)}
+                      placeholder="Search by name or email…"
+                      className="flex-1 text-[13px] outline-none text-gray-700 placeholder:text-gray-400" />
+                    <button onClick={() => { setShowAddMember(false); setMemberSearch(''); }}><X size={13} className="text-gray-400 hover:text-gray-600" /></button>
+                  </div>
+                  <div className="mt-3 space-y-1.5 max-h-48 overflow-y-auto">
+                    {nonMembers
+                      .filter(m => { const mb = m.user||m; const s = memberSearch.toLowerCase(); return !s || `${mb.firstName} ${mb.lastName}`.toLowerCase().includes(s) || (mb.email||'').toLowerCase().includes(s); })
+                      .map(m => { const mb = m.user||m; return (
+                        <div key={mb.id} onClick={() => addMember(mb.id)}
+                          className="flex items-center gap-3 px-4 py-2.5 bg-white rounded-xl border border-gray-100 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-colors">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white ${avatarColor(mb.firstName||'')}`}>{mkInitials(mb.firstName||'',mb.lastName||'')}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-medium text-gray-800">{mb.firstName} {mb.lastName}</p>
+                            <p className="text-[11.5px] text-gray-400">{mb.email||''}</p>
+                          </div>
+                          <span className="text-[12px] text-blue-600 font-medium">+ Add</span>
+                        </div>
+                      );})}
+                    {nonMembers.length === 0 && <p className="text-center text-[12.5px] text-gray-400 py-3">All space members are already added</p>}
+                  </div>
+                </div>
+              )}
+              {members.length === 0 ? (
+                <div className="flex flex-col items-center py-14 text-center">
+                  <Users size={28} className="text-gray-200 mb-3" />
+                  <p className="text-[14px] font-medium text-gray-400">No members yet</p>
+                  <p className="text-[12.5px] text-gray-400 mt-1">Add people above to give them access to this queue</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="text-left px-6 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Member</th>
+                      <th className="text-left px-6 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
+                      <th className="text-left px-6 py-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Role</th>
+                      <th className="px-6 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {members.map(m => {
+                      const mb = m.user||m;
+                      const isSuspended = suspended.includes(mb.id);
+                      return (
+                        <tr key={mb.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white flex-shrink-0 ${isSuspended ? 'bg-gray-300' : avatarColor(mb.firstName||'')}`}>
+                                {mkInitials(mb.firstName||'',mb.lastName||'')}
+                              </div>
+                              <div>
+                                <p className={`text-[13px] font-medium ${isSuspended ? 'text-gray-400' : 'text-gray-800'}`}>{mb.firstName} {mb.lastName}</p>
+                                <p className="text-[11.5px] text-gray-400">{mb.email||''}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {isSuspended
+                              ? <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">Suspended</span>
+                              : <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500" />Active</span>}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-[12.5px] text-gray-500 bg-gray-100 rounded-md px-2.5 py-1">Member</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-end gap-2">
+                              {isSuspended
+                                ? <button onClick={() => reactivate(mb.id)} className="text-[12px] font-medium text-emerald-600 hover:text-emerald-800 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition-colors">Reactivate</button>
+                                : <button onClick={() => suspendMember(mb.id)} className="text-[12px] font-medium text-amber-600 hover:text-amber-800 px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-50 transition-colors">Suspend</button>}
+                              <button onClick={() => removeMember(mb.id)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── SLAs ── */}
+        {tab === 'sla' && (
+          <SLATab queue={queue} policies={policies} savedMsg={savedMsg} savePolicies={savePolicies} />
+        )}
+
+        {/* ── Round Robin ── */}
+        {tab === 'rr' && (
+          <RoundRobinTab spaceKey={spaceKey} queueName={queue.name} spaceMembers={spaceMembers} />
+        )}
+
+        {/* ── Email ── */}
+        {tab === 'email' && (
+          <QueueEmailTab spaceKey={spaceKey} queueName={queue.name} />
+        )}
+      </div>
+    </div>
+  );
+}

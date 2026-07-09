@@ -1,0 +1,1268 @@
+﻿'use client';
+
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { useShallow } from 'zustand/react/shallow';
+import { useStore } from '@/store';
+import { api } from '@/lib/api';
+import { timeAgo, cn } from '@/lib/utils';
+import Link from 'next/link';
+import { PriorityIcon } from '@/components/ui/PriorityIcon';
+import DotLoader from '@/components/ui/DotLoader';
+import IssueTypeIcon from '@/components/ui/IssueTypeIcon';
+import {
+  Search, Star, Plus, MoreHorizontal, Trash2, Edit2,
+  Filter, X, ChevronDown, Check, Bookmark, SlidersHorizontal,
+  List, LayoutGrid,
+} from 'lucide-react';
+
+/* ─── types ─── */
+interface FilterCriteria {
+  spaces?: string[];
+  assignees?: string[];
+  types?: string[];
+  statuses?: string[];
+  priorities?: string[];
+  text?: string;
+}
+interface SavedFilter {
+  id: string; name: string; criteria: FilterCriteria;
+  ownerId: string; ownerName: string;
+  starred: boolean; starredBy: string[];
+  createdAt: string; updatedAt: string;
+}
+
+const ISSUE_TYPES = ['bug', 'task', 'story', 'epic', 'subtask', 'improvement', 'feature', 'test', 'incident', 'change_request'];
+const TYPE_LABELS: Record<string, string> = {
+  bug: 'Bug', task: 'Task', story: 'Story', epic: 'Epic', subtask: 'Subtask',
+  improvement: 'Improvement', feature: 'Feature', test: 'Test', incident: 'Incident', change_request: 'Change Request',
+};
+const PRIORITIES = ['highest', 'high', 'medium', 'low', 'lowest'];
+const PRIORITY_LABELS: Record<string, string> = {
+  highest: 'Highest', high: 'High', medium: 'Medium', low: 'Low', lowest: 'Lowest',
+};
+
+
+/* ─── inline dropdown ─── */
+function DropBtn({
+  label, options, selected, onChange, align = 'left',
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQ(''); }
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()));
+  const toggle = (val: string) =>
+    onChange(selected.includes(val) ? selected.filter((v) => v !== val) : [...selected, val]);
+
+  const active = selected.length > 0;
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex items-center gap-1 rounded border px-3 py-1.5 text-[12.5px] font-medium transition-colors whitespace-nowrap',
+          active
+            ? 'border-blue-500 bg-blue-50 text-blue-700'
+            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50',
+        )}
+      >
+        {label}
+        {active && (
+          <span className="ml-0.5 text-[10px] font-bold text-blue-600">({selected.length})</span>
+        )}
+        <ChevronDown size={12} className={cn('ml-0.5 text-gray-400 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className={cn(
+          'absolute top-full mt-1 z-[200] w-60 rounded-lg border border-gray-200 bg-white shadow-2xl overflow-hidden',
+          align === 'right' ? 'right-0' : 'left-0',
+        )}>
+          <div className="border-b border-gray-100 px-3 py-2">
+            <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
+              <Search size={12} className="text-gray-400 flex-shrink-0" />
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={`Search ${label.toLowerCase()}…`}
+                className="flex-1 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
+              />
+            </div>
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <p className="px-4 py-3 text-[12px] text-gray-400 text-center">No results</p>
+            ) : (
+              filtered.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => toggle(opt.value)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-[12.5px] text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <div className={cn(
+                    'h-4 w-4 flex-shrink-0 rounded border flex items-center justify-center',
+                    selected.includes(opt.value) ? 'border-blue-600 bg-blue-600' : 'border-gray-300',
+                  )}>
+                    {selected.includes(opt.value) && <Check size={10} className="text-white" strokeWidth={3} />}
+                  </div>
+                  <span className="flex-1 truncate text-left">{opt.label}</span>
+                </button>
+              ))
+            )}
+          </div>
+          {selected.length > 0 && (
+            <div className="border-t border-gray-100 px-3 py-2">
+              <button onClick={() => onChange([])} className="text-[11.5px] text-blue-600 font-medium hover:text-blue-800">
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── save-name modal ─── */
+function SaveModal({
+  criteria, editFilter, onClose, onSaved,
+}: {
+  criteria: FilterCriteria; editFilter?: SavedFilter | null;
+  onClose: () => void; onSaved: (f: SavedFilter) => void;
+}) {
+  const [name, setName] = useState(editFilter?.name || '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleSave = async () => {
+    if (!name.trim()) { setErr('Name is required'); return; }
+    setSaving(true);
+    try {
+      let res: SavedFilter;
+      if (editFilter) {
+        res = await api.updateFilter(editFilter.id, { name: name.trim(), criteria }) as any;
+      } else {
+        res = await api.createFilter({ name: name.trim(), criteria }) as any;
+      }
+      onSaved(res);
+    } catch (e: any) { setErr(e.message || 'Failed'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-[420px] rounded-xl bg-white shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <h2 className="text-[15px] font-semibold text-gray-900">{editFilter ? 'Update filter' : 'Save filter'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={17} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {err && <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-[12.5px] text-red-700">{err}</div>}
+          <div>
+            <label className="block text-[12.5px] font-semibold text-gray-700 mb-1.5">Filter name <span className="text-red-500">*</span></label>
+            <input
+              autoFocus value={name} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+              placeholder="e.g. My open bugs"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-[13px] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 px-5 py-3">
+          <button onClick={onClose}
+            className="rounded-md border border-gray-300 px-4 py-2 text-[12.5px] font-medium text-gray-700 hover:bg-white transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="rounded-md bg-blue-600 px-5 py-2 text-[12.5px] font-semibold text-white hover:bg-blue-700 disabled:opacity-60 transition-colors">
+            {saving ? 'Saving…' : editFilter ? 'Update' : 'Save filter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const IN_RANGE_PRESETS = [
+  { value: 'today',     label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: '7d',        label: 'Last 7 days' },
+  { value: '30d',       label: 'Last 30 days' },
+  { value: '90d',       label: 'Last 90 days' },
+];
+
+type DateMode = 'withinLast' | 'moreThan' | 'between' | 'inRange';
+
+/** Encode date filter to a string for the API */
+function encodeDateFilter(mode: DateMode, n: string, unit: string, from: string, to: string, preset: string): string {
+  if (mode === 'withinLast') return `withinLast:${n || 7}:${unit || 'days'}`;
+  if (mode === 'moreThan')   return `moreThan:${n || 7}:${unit || 'days'}`;
+  if (mode === 'between')    return `between:${from}:${to}`;
+  if (mode === 'inRange')    return preset || '7d';
+  return '';
+}
+
+/** Decode string back to display label for the button */
+function decodeDateLabel(val: string): string {
+  if (!val) return '';
+  if (val.startsWith('withinLast:')) {
+    const [, n, unit] = val.split(':');
+    return `Within last ${n} ${unit}`;
+  }
+  if (val.startsWith('moreThan:')) {
+    const [, n, unit] = val.split(':');
+    return `More than ${n} ${unit} ago`;
+  }
+  if (val.startsWith('between:')) {
+    const parts = val.split(':');
+    return `${parts[1]} → ${parts[2]}`;
+  }
+  return IN_RANGE_PRESETS.find((p) => p.value === val)?.label || val;
+}
+
+/** Today's date as YYYY-MM-DD for default */
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function daysAgoStr(n: number) {
+  const d = new Date(); d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/* ─── Jira-style Date dropdown (Within last / More than / Between / In range) ─── */
+function DateDropBtn({
+  label, selected, onChange, align = 'left',
+}: {
+  label: string;
+  selected: string;
+  onChange: (v: string) => void;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // local draft state
+  const [mode, setMode]         = useState<DateMode>('withinLast');
+  const [wlN, setWlN]           = useState('7');
+  const [wlUnit, setWlUnit]     = useState('days');
+  const [mtN, setMtN]           = useState('7');
+  const [mtUnit, setMtUnit]     = useState('days');
+  const [btFrom, setBtFrom]     = useState(daysAgoStr(7));
+  const [btTo, setBtTo]         = useState(todayStr());
+  const [preset, setPreset]     = useState('7d');
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  // when opening, decode current value into draft
+  const handleOpen = () => {
+    if (selected) {
+      if (selected.startsWith('withinLast:')) {
+        const [, n, u] = selected.split(':'); setMode('withinLast'); setWlN(n); setWlUnit(u);
+      } else if (selected.startsWith('moreThan:')) {
+        const [, n, u] = selected.split(':'); setMode('moreThan'); setMtN(n); setMtUnit(u);
+      } else if (selected.startsWith('between:')) {
+        const parts = selected.split(':'); setMode('between'); setBtFrom(parts[1]); setBtTo(parts[2]);
+      } else {
+        setMode('inRange'); setPreset(selected);
+      }
+    }
+    setOpen(true);
+  };
+
+  const handleUpdate = () => {
+    const val = encodeDateFilter(mode, wlN, wlUnit, btFrom, btTo, preset);
+    onChange(val);
+    setOpen(false);
+  };
+
+  const active = Boolean(selected);
+
+  const unitSelect = (val: string, set: (v: string) => void) => (
+    <select value={val} onChange={(e) => set(e.target.value)}
+      className="rounded border border-gray-300 bg-white px-2 py-1 text-[12px] text-gray-700 outline-none focus:border-blue-500 cursor-pointer">
+      <option value="days">days</option>
+      <option value="weeks">weeks</option>
+      <option value="months">months</option>
+    </select>
+  );
+
+  const RadioRow = ({ m, children }: { m: DateMode; children: React.ReactNode }) => (
+    <div
+      onClick={() => setMode(m)}
+      className={cn(
+        'flex cursor-pointer flex-col gap-1.5 rounded-md px-3 py-2.5 transition-colors',
+        mode === m ? 'bg-blue-50' : 'hover:bg-gray-50',
+      )}
+    >
+      <div className="flex items-center gap-2.5">
+        <div className={cn(
+          'h-4 w-4 flex-shrink-0 rounded-full border-2 flex items-center justify-center',
+          mode === m ? 'border-blue-600' : 'border-gray-300',
+        )}>
+          {mode === m && <div className="h-2 w-2 rounded-full bg-blue-600" />}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={handleOpen}
+        className={cn(
+          'flex items-center gap-1 rounded border px-3 py-1.5 text-[12.5px] font-medium transition-colors whitespace-nowrap',
+          active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50',
+        )}
+      >
+        {active ? `${label}: ${decodeDateLabel(selected)}` : label}
+        {active ? (
+          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-blue-400 hover:text-blue-700 cursor-pointer">
+            <X size={11} />
+          </span>
+        ) : (
+          <ChevronDown size={12} className={cn('ml-0.5 text-gray-400 transition-transform', open && 'rotate-180')} />
+        )}
+      </button>
+
+      {open && (
+        <div className={cn(
+          'absolute top-full mt-1 z-[200] w-72 rounded-lg border border-gray-200 bg-white shadow-2xl overflow-hidden',
+          align === 'right' ? 'right-0' : 'left-0',
+        )}>
+          <div className="divide-y divide-gray-100 py-1">
+
+            {/* Within the last */}
+            <RadioRow m="withinLast">
+              <span className="text-[13px] font-medium text-gray-800 flex-1">Within the last</span>
+            </RadioRow>
+            {mode === 'withinLast' && (
+              <div className="flex items-center gap-2 bg-blue-50 px-3 py-2">
+                <input type="number" min={1} value={wlN} onChange={(e) => setWlN(e.target.value)}
+                  className="w-16 rounded border border-gray-300 px-2 py-1 text-[12px] text-gray-700 outline-none focus:border-blue-500" />
+                {unitSelect(wlUnit, setWlUnit)}
+              </div>
+            )}
+
+            {/* More than */}
+            <RadioRow m="moreThan">
+              <span className="text-[13px] font-medium text-gray-800 flex-1">More than</span>
+            </RadioRow>
+            {mode === 'moreThan' && (
+              <div className="flex items-center gap-2 bg-blue-50 px-3 py-2">
+                <input type="number" min={1} value={mtN} onChange={(e) => setMtN(e.target.value)}
+                  className="w-16 rounded border border-gray-300 px-2 py-1 text-[12px] text-gray-700 outline-none focus:border-blue-500" />
+                {unitSelect(mtUnit, setMtUnit)}
+                <span className="text-[11.5px] text-gray-500">ago</span>
+              </div>
+            )}
+
+            {/* Between */}
+            <RadioRow m="between">
+              <span className="text-[13px] font-medium text-gray-800 flex-1">Between</span>
+            </RadioRow>
+            {mode === 'between' && (
+              <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 flex-wrap">
+                <input type="date" value={btFrom} onChange={(e) => setBtFrom(e.target.value)}
+                  className="flex-1 min-w-0 rounded border border-gray-300 px-2 py-1 text-[12px] text-gray-700 outline-none focus:border-blue-500" />
+                <span className="text-[11.5px] text-gray-500">and</span>
+                <input type="date" value={btTo} onChange={(e) => setBtTo(e.target.value)}
+                  className="flex-1 min-w-0 rounded border border-gray-300 px-2 py-1 text-[12px] text-gray-700 outline-none focus:border-blue-500" />
+              </div>
+            )}
+
+            {/* In the range */}
+            <RadioRow m="inRange">
+              <span className="text-[13px] font-medium text-gray-800 flex-1">In the range</span>
+            </RadioRow>
+            {mode === 'inRange' && (
+              <div className="bg-blue-50 px-3 py-2 space-y-0.5">
+                {IN_RANGE_PRESETS.map((p) => (
+                  <button key={p.value} onClick={() => setPreset(p.value)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded px-2 py-1.5 text-[12.5px] transition-colors',
+                      preset === p.value ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-blue-100',
+                    )}>
+                    <div className={cn(
+                      'h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 flex items-center justify-center',
+                      preset === p.value ? 'border-blue-600' : 'border-gray-400',
+                    )}>
+                      {preset === p.value && <div className="h-1.5 w-1.5 rounded-full bg-blue-600" />}
+                    </div>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-3 py-2.5">
+            {selected && (
+              <button onClick={() => { onChange(''); setOpen(false); }}
+                className="text-[12px] text-gray-500 hover:text-red-500 transition-colors">
+                Clear
+              </button>
+            )}
+            <button onClick={handleUpdate}
+              className="ml-auto rounded-md bg-blue-600 px-4 py-1.5 text-[12.5px] font-semibold text-white hover:bg-blue-700 transition-colors">
+              Update
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// All available "extra" filter options that can be added to the bar from More filters
+const EXTRA_FILTER_OPTIONS = [
+  { id: 'reporter', label: 'Reporter',     group: 'People' },
+  { id: 'priority', label: 'Priority',     group: 'Issue' },
+  { id: 'label',    label: 'Label',        group: 'Issue' },
+  { id: 'created',  label: 'Created date', group: 'Date' },
+  { id: 'updated',  label: 'Updated date', group: 'Date' },
+];
+
+/* ─── More filters dropdown — all filters are "add to bar" style ─── */
+function MoreFiltersBtn({
+  activeExtras, onToggleExtra,
+}: {
+  activeExtras: string[];
+  onToggleExtra: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQ(''); }
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const qLow = q.trim().toLowerCase();
+  const filtered = EXTRA_FILTER_OPTIONS.filter((o) =>
+    !qLow || o.label.toLowerCase().includes(qLow) || o.group.toLowerCase().includes(qLow),
+  );
+
+  const visibleGroups = ['People', 'Issue', 'Date'].filter((g) =>
+    filtered.some((o) => o.group === g),
+  );
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex items-center gap-1 rounded border px-3 py-1.5 text-[12.5px] font-medium transition-colors whitespace-nowrap',
+          activeExtras.length > 0
+            ? 'border-blue-500 bg-blue-50 text-blue-700'
+            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50',
+        )}
+      >
+        More filters
+        {activeExtras.length > 0 && (
+          <span className="ml-0.5 text-[10px] font-bold text-blue-600">({activeExtras.length})</span>
+        )}
+        <ChevronDown size={12} className={cn('ml-0.5 text-gray-400 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-[200] w-60 rounded-lg border border-gray-200 bg-white shadow-2xl overflow-hidden">
+          {/* search */}
+          <div className="border-b border-gray-100 px-3 py-2">
+            <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
+              <Search size={12} className="text-gray-400 flex-shrink-0" />
+              <input
+                autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+                placeholder="Search filters…"
+                className="flex-1 bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
+              />
+              {q && <button onClick={() => setQ('')}><X size={11} className="text-gray-400" /></button>}
+            </div>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto py-1">
+            {visibleGroups.length === 0 ? (
+              <p className="px-4 py-4 text-[12px] text-gray-400 text-center">No results for &ldquo;{q}&rdquo;</p>
+            ) : (
+              visibleGroups.map((group) => (
+                <div key={group}>
+                  <p className="px-3 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">{group}</p>
+                  {filtered.filter((o) => o.group === group).map((opt) => {
+                    const added = activeExtras.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => { onToggleExtra(opt.id); }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-[12.5px] text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className={cn(
+                          'h-4 w-4 flex-shrink-0 rounded border flex items-center justify-center transition-colors',
+                          added ? 'border-blue-600 bg-blue-600' : 'border-gray-300',
+                        )}>
+                          {added && <Check size={10} className="text-white" strokeWidth={3} />}
+                        </div>
+                        <span className="flex-1 text-left font-medium">{opt.label}</span>
+                        {!added && (
+                          <span className="text-[10.5px] text-blue-500 font-semibold">+ Add</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── main page ─── */
+export default function FiltersPage() {
+  const { user, spaces } = useStore(useShallow((s) => ({ user: s.user, spaces: s.spaces })));
+
+  /* filter bar state */
+  const [text, setText]                   = useState('');
+  const [selSpaces, setSelSpaces]         = useState<string[]>([]);
+  const [selAssignees, setSelAssignees]   = useState<string[]>([]);  // stores member IDs
+  const [selReporters, setSelReporters]   = useState<string[]>([]);  // stores member IDs
+  const [selTypes, setSelTypes]           = useState<string[]>([]);
+  const [selStatuses, setSelStatuses]     = useState<string[]>([]);
+  const [selPriorities, setSelPriorities] = useState<string[]>([]);
+  const [selLabels, setSelLabels]         = useState<string[]>([]);
+  const [selCreated, setSelCreated]       = useState('');
+  const [selUpdated, setSelUpdated]       = useState('');
+
+  /* issues */
+  const [issues, setIssues]   = useState<any[]>([]);
+  const [total, setTotal]     = useState(0);
+  const [loadingIssues, setLoadingIssues] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* saved filters */
+  const [savedFilters, setSavedFilters]         = useState<SavedFilter[]>([]);
+  const [activeFilterId, setActiveFilterId]     = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal]        = useState(false);
+  const [editingFilter, setEditingFilter]        = useState<SavedFilter | null>(null);
+  const [showSavedPanel, setShowSavedPanel]      = useState(false);
+  const [menuId, setMenuId]                     = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId]   = useState<string | null>(null);
+  // which extra date filters are visible in the bar (added from More filters)
+  const [activeExtras, setActiveExtras]         = useState<string[]>([]);
+
+  const toggleExtra = (key: string) => {
+    setActiveExtras((prev) => {
+      if (prev.includes(key)) {
+        // remove from bar — also clear its value
+        if (key === 'created')  setSelCreated('');
+        if (key === 'updated')  setSelUpdated('');
+        if (key === 'reporter') setSelReporters([]);
+        if (key === 'priority') setSelPriorities([]);
+        if (key === 'label')    setSelLabels([]);
+        return prev.filter((k) => k !== key);
+      }
+      return [...prev, key];
+    });
+  };
+
+  /* derived */
+  // When specific spaces are selected, only show statuses that belong to those spaces.
+  // If no space filter is active, show statuses from all spaces.
+  const filteredSpacesForStatus = selSpaces.length > 0
+    ? spaces.filter((sp: any) => selSpaces.includes(sp.key))
+    : spaces;
+  const availableStatuses: { value: string; label: string }[] = Array.from(
+    new Map(
+      filteredSpacesForStatus
+        .flatMap((sp: any) => (sp.statuses || []))
+        .map((s: any) => [s.name, s])
+    ).values()
+  )
+    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+    .map((s: any) => ({ value: s.name, label: s.name }));
+
+  const allMembers: any[] = Array.from(
+    new Map(spaces.flatMap((sp: any) => (sp.members || []).map((m: any) => [m.id, m]))).values(),
+  );
+
+  const hasCriteria = Boolean(
+    text.trim() || selSpaces.length || selAssignees.length || selReporters.length ||
+    selTypes.length || selStatuses.length || selPriorities.length || selLabels.length ||
+    selCreated || selUpdated,
+  );
+
+  /* fetch issues — all filtering done server-side for accuracy */
+  const fetchIssues = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setLoadingIssues(true);
+      try {
+        const params: Record<string, string> = { page: '1', limit: '1000' };
+
+        // Space(s) — always restrict to user's accessible spaces
+        // If specific spaces are selected, use those; otherwise use ALL accessible spaces
+        const accessibleSpaceKeys = spaces.map((sp: any) => sp.key);
+        if (selSpaces.length === 1) {
+          params.spaceKey = selSpaces[0];
+        } else if (selSpaces.length > 1) {
+          params.spaceKeys = selSpaces.join(',');
+        } else if (accessibleSpaceKeys.length > 0) {
+          // No specific filter: restrict to accessible spaces only (not all 25k+ issues)
+          params.spaceKeys = accessibleSpaceKeys.join(',');
+        }
+
+        // Expand a member into all possible identifiers the mock can match against
+        const expandMember = (id: string) => {
+          const m = allMembers.find((mm: any) => mm.id === id);
+          if (!m) return [id];
+          const firstName = (m.firstName || '').trim();
+          const lastName  = (m.lastName  || '').trim();
+          const fullName  = [firstName, lastName].filter(Boolean).join(' ');
+          const display   = (m.displayName || m.name || '').trim();
+          // also include accountId / jiraId if present (Jira migration field)
+          const jiraId    = (m.accountId || m.jiraId || m.jira_id || '').trim();
+          return [id, m.email, fullName, firstName, display, jiraId].filter(Boolean);
+        };
+
+        if (selAssignees.length) {
+          params.assignees = Array.from(new Set(selAssignees.flatMap(expandMember))).join(',');
+        }
+
+        if (selReporters.length) {
+          params.reporters = Array.from(new Set(selReporters.flatMap(expandMember))).join(',');
+        }
+
+        // Type(s)
+        if (selTypes.length)    params.type     = selTypes.join(',');
+
+        // Status(es)
+        if (selStatuses.length) params.status   = selStatuses.join(',');
+
+        // Priority(ies)
+        if (selPriorities.length) params.priority = selPriorities.join(',');
+
+        // Labels
+        if (selLabels.length) params.labels = selLabels.join(',');
+
+        // Date ranges
+        if (selCreated) params.createdRange = selCreated;
+        if (selUpdated) params.updatedRange = selUpdated;
+
+        // Text search
+        if (text.trim()) params.q = text.trim();
+
+        const { issues: list, total: tot } = await api.getIssues(params);
+        setIssues(list as any[]);
+        setTotal(tot);
+      } catch { setIssues([]); setTotal(0); }
+      setLoadingIssues(false);
+    }, 400);
+  }, [text, selSpaces, selAssignees, selReporters, selTypes, selStatuses, selPriorities, selLabels, selCreated, selUpdated, spaces]);
+
+  useEffect(() => { fetchIssues(); }, [fetchIssues]);
+
+  // When space selection changes, drop any selected statuses that no longer exist in the new scope
+  useEffect(() => {
+    if (selStatuses.length === 0) return;
+    const validNames = new Set(availableStatuses.map((s) => s.value));
+    const stillValid = selStatuses.filter((s) => validNames.has(s));
+    if (stillValid.length !== selStatuses.length) setSelStatuses(stillValid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selSpaces]);
+
+  /* load saved filters */
+  const loadSavedFilters = async () => {
+    try { const data = await api.getFilters(); setSavedFilters(data as any); } catch { /* ignore */ }
+  };
+  useEffect(() => { loadSavedFilters(); }, []);
+
+  const clearAll = () => {
+    setText(''); setSelSpaces([]); setSelAssignees([]); setSelReporters([]);
+    setSelTypes([]); setSelStatuses([]); setSelPriorities([]); setSelLabels([]);
+    setSelCreated(''); setSelUpdated('');
+    setActiveExtras([]);
+    setActiveFilterId(null);
+  };
+
+  const applyFilter = (f: SavedFilter) => {
+    const c = f.criteria || {};
+    setText(c.text || '');
+    setSelSpaces(c.spaces || []);
+    setSelAssignees(c.assignees || []);
+    setSelReporters((c as any).reporters || []);
+    setSelTypes(c.types || []);
+    setSelStatuses(c.statuses || []);
+    setSelPriorities(c.priorities || []);
+    const cr = (c as any).createdRange || '';
+    const ur = (c as any).updatedRange || '';
+    setSelCreated(cr);
+    setSelUpdated(ur);
+    // auto-show bar buttons for any criteria that have values
+    const extras: string[] = [];
+    if ((c as any).reporters?.length) extras.push('reporter');
+    if (c.priorities?.length)         extras.push('priority');
+    if (cr)                           extras.push('created');
+    if (ur)                           extras.push('updated');
+    setActiveExtras(extras);
+    setActiveFilterId(f.id);
+    setShowSavedPanel(false);
+  };
+
+  const handleStar = async (f: SavedFilter) => {
+    const starred = f.starredBy?.includes(user?.id || '');
+    if (starred) await api.unstarFilter(f.id); else await api.starFilter(f.id);
+    loadSavedFilters();
+  };
+
+  const handleDelete = async (id: string) => {
+    await api.deleteFilter(id);
+    setDeleteConfirmId(null);
+    loadSavedFilters();
+    if (activeFilterId === id) clearAll();
+  };
+
+  const currentCriteria: FilterCriteria & { reporters?: string[]; createdRange?: string; updatedRange?: string } = {
+    ...(text.trim() ? { text: text.trim() } : {}),
+    ...(selSpaces.length ? { spaces: selSpaces } : {}),
+    ...(selAssignees.length ? { assignees: selAssignees } : {}),
+    ...(selReporters.length ? { reporters: selReporters } : {}),
+    ...(selTypes.length ? { types: selTypes } : {}),
+    ...(selStatuses.length ? { statuses: selStatuses } : {}),
+    ...(selPriorities.length ? { priorities: selPriorities } : {}),
+    ...(selCreated ? { createdRange: selCreated } : {}),
+    ...(selUpdated ? { updatedRange: selUpdated } : {}),
+  };
+
+  // Helper: member name by ID
+  const memberName = (id: string) => {
+    const m = allMembers.find((mm: any) => mm.id === id || mm.email === id);
+    return m ? `${m.firstName || ''} ${m.lastName || ''}`.trim() || m.email : id;
+  };
+
+  const activeFilter = savedFilters.find((f) => f.id === activeFilterId);
+  const starredFilters = savedFilters.filter((f) => f.starredBy?.includes(user?.id || ''));
+
+  return (
+    <div className="max-w-[1200px] mx-auto space-y-4">
+
+      {/* ── Page header ── */}
+      <div>
+        <h1 className="text-[22px] font-semibold text-gray-900 mb-3">Filters</h1>
+
+        {/* ── Tabs: All Work | Saved Filters ── */}
+        <div className="flex items-center border-b border-gray-200">
+          <button
+            onClick={() => setShowSavedPanel(false)}
+            className={cn(
+              'relative px-4 py-2.5 text-[13.5px] font-medium transition-colors',
+              !showSavedPanel
+                ? 'text-blue-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-blue-600 after:rounded-t'
+                : 'text-gray-500 hover:text-gray-800',
+            )}
+          >
+            <div className="flex items-center gap-1.5">
+              <List size={14} />
+              All Work
+              {activeFilter && (
+                <span className="rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold px-1.5 py-0.5">Filter active</span>
+              )}
+            </div>
+          </button>
+          <button
+            onClick={() => setShowSavedPanel(true)}
+            className={cn(
+              'relative px-4 py-2.5 text-[13.5px] font-medium transition-colors',
+              showSavedPanel
+                ? 'text-blue-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-blue-600 after:rounded-t'
+                : 'text-gray-500 hover:text-gray-800',
+            )}
+          >
+            <div className="flex items-center gap-1.5">
+              <Bookmark size={14} />
+              Saved Filters
+              {savedFilters.length > 0 && (
+                <span className={cn(
+                  'rounded-full text-[10px] font-bold px-1.5 py-0.5',
+                  showSavedPanel ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500',
+                )}>{savedFilters.length}</span>
+              )}
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Saved filters panel — Jira-style table ── */}
+      {showSavedPanel && (
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+
+          {savedFilters.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <Bookmark size={32} className="mb-3 text-gray-200" />
+              <p className="text-[13.5px] font-semibold text-gray-500">No saved filters yet</p>
+              <p className="text-[12px] text-gray-400 mt-1">Apply filters and click "Save filter" to save them here</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50/60">
+                    <th className="w-8 px-4 py-2.5" />
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Name</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Owner</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Filters</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Starred by</th>
+                    <th className="w-10 px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {[...savedFilters]
+                    .sort((a, b) => {
+                      const aS = a.starredBy?.includes(user?.id || '') ? 0 : 1;
+                      const bS = b.starredBy?.includes(user?.id || '') ? 0 : 1;
+                      return aS - bS;
+                    })
+                    .map((f) => {
+                      const isStarred = f.starredBy?.includes(user?.id || '');
+                      const isActive  = activeFilterId === f.id;
+                      const chips     = [
+                        ...(f.criteria?.spaces || []).map((v: string) => spaces.find((s: any) => s.key === v)?.name || v),
+                        ...(f.criteria?.assignees || []).map((v: string) => memberName(v)),
+                        ...((f.criteria as any)?.reporters || []).map((v: string) => memberName(v)),
+                        ...(f.criteria?.types || []).map((v: string) => TYPE_LABELS[v] || v),
+                        ...(f.criteria?.statuses || []),
+                        ...(f.criteria?.priorities || []).map((v: string) => PRIORITY_LABELS[v] || v),
+                      ].filter(Boolean);
+                      const ownerInitials = ((f as any).ownerName || 'U')
+                        .split(' ').slice(0, 2).map((p: string) => p[0] || '').join('').toUpperCase();
+                      const starCount = (f.starredBy || []).length;
+
+                      return (
+                        <tr
+                          key={f.id}
+                          className={cn(
+                            'group hover:bg-blue-50/40 transition-colors cursor-pointer',
+                            isActive && 'bg-blue-50',
+                          )}
+                          onClick={() => applyFilter(f)}
+                        >
+                          {/* Star */}
+                          <td className="px-4 py-3 w-8">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleStar(f); }}
+                              className="transition-colors"
+                            >
+                              <Star
+                                size={15}
+                                className={isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300 hover:text-yellow-400'}
+                              />
+                            </button>
+                          </td>
+
+                          {/* Name */}
+                          <td className="px-3 py-3 min-w-[160px]">
+                            <span className={cn(
+                              'text-[13px] font-semibold hover:underline',
+                              isActive ? 'text-blue-700' : 'text-blue-600',
+                            )}>
+                              {f.name}
+                            </span>
+                            {isActive && (
+                              <span className="ml-2 rounded-full bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 align-middle">Active</span>
+                            )}
+                          </td>
+
+                          {/* Owner */}
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 flex-shrink-0 rounded-full bg-blue-500 flex items-center justify-center text-[9px] font-bold text-white">
+                                {ownerInitials}
+                              </div>
+                              <span className="text-[12.5px] text-gray-700 whitespace-nowrap">
+                                {(f as any).ownerName || 'Unknown'}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Filters applied */}
+                          <td className="px-3 py-3 max-w-[320px]">
+                            {chips.length === 0 ? (
+                              <span className="text-[11.5px] text-gray-300">—</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {chips.slice(0, 5).map((c, i) => (
+                                  <span key={i} className="rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10.5px] text-gray-600">
+                                    {c}
+                                  </span>
+                                ))}
+                                {chips.length > 5 && (
+                                  <span className="rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10.5px] text-gray-400">
+                                    +{chips.length - 5}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Starred by */}
+                          <td className="px-3 py-3">
+                            <span className="text-[12.5px] text-gray-500">
+                              {starCount === 0 ? '—' : `${starCount} ${starCount === 1 ? 'person' : 'people'}`}
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="px-4 py-3 w-10">
+                            <div className="relative">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setMenuId(menuId === f.id ? null : f.id); }}
+                                className="opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-gray-200 transition-all"
+                              >
+                                <MoreHorizontal size={14} />
+                              </button>
+                              {menuId === f.id && (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={() => setMenuId(null)} />
+                                  <div className="absolute right-0 top-full z-[9999] mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
+                                    {f.ownerId === user?.id && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setMenuId(null); setEditingFilter(f); applyFilter(f); setShowSaveModal(true); }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-[12.5px] text-gray-700 hover:bg-gray-50"
+                                      >
+                                        <Edit2 size={13} className="text-gray-400" /> Edit
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setMenuId(null); handleStar(f); }}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-[12.5px] text-gray-700 hover:bg-gray-50"
+                                    >
+                                      <Star size={13} className={isStarred ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400'} />
+                                      {isStarred ? 'Unstar' : 'Star'}
+                                    </button>
+                                    {f.ownerId === user?.id && (
+                                      <>
+                                        <div className="my-1 h-px bg-gray-100" />
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setMenuId(null); setDeleteConfirmId(f.id); }}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-[12.5px] text-red-600 hover:bg-red-50"
+                                        >
+                                          <Trash2 size={13} className="text-red-400" /> Delete
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Filter bar (only on All Work tab) ── */}
+      {!showSavedPanel && <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-visible">
+
+        {/* Row 1: fixed filters */}
+        <div className="flex items-center gap-2 px-4 py-3 flex-wrap border-b border-gray-100">
+          {/* search */}
+          <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1.5 min-w-[180px] flex-1 max-w-xs">
+            <Search size={13} className="text-gray-400 flex-shrink-0" />
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Search work…"
+              className="flex-1 bg-transparent text-[12.5px] text-gray-800 outline-none placeholder:text-gray-400"
+            />
+            {text && <button onClick={() => setText('')}><X size={12} className="text-gray-400 hover:text-gray-600" /></button>}
+          </div>
+
+          <DropBtn label="Space" options={spaces.map((sp: any) => ({ value: sp.key, label: sp.name }))} selected={selSpaces} onChange={setSelSpaces} />
+          <DropBtn
+            label="Assignee"
+            options={allMembers.map((m: any) => ({ value: m.id, label: `${m.firstName || ''} ${m.lastName || ''}`.trim() || m.email || m.id }))}
+            selected={selAssignees}
+            onChange={setSelAssignees}
+          />
+          <DropBtn label="Type" options={ISSUE_TYPES.map((t) => ({ value: t, label: TYPE_LABELS[t] || t }))} selected={selTypes} onChange={setSelTypes} />
+          <DropBtn label="Status" options={availableStatuses} selected={selStatuses} onChange={setSelStatuses} />
+
+          <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+            {/* More filters — adds extras to row 2 */}
+            <MoreFiltersBtn activeExtras={activeExtras} onToggleExtra={toggleExtra} />
+            {hasCriteria && (
+              <button onClick={clearAll} className="text-[12px] text-gray-400 hover:text-red-500 flex items-center gap-1 transition-colors whitespace-nowrap">
+                <X size={12} /> Clear
+              </button>
+            )}
+            <button
+              onClick={() => { setEditingFilter(null); setShowSaveModal(true); }}
+              className="flex items-center gap-1.5 rounded-md border border-blue-500 px-3 py-1.5 text-[12.5px] font-semibold text-blue-600 hover:bg-blue-50 transition-colors whitespace-nowrap"
+            >
+              <Bookmark size={13} /> Save filter
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: active extra filters (only shown when extras are added) */}
+        {activeExtras.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mr-1">Active filters:</span>
+
+            {activeExtras.includes('reporter') && (
+              <div className="flex items-center gap-1">
+                <DropBtn
+                  label="Reporter"
+                  options={allMembers.map((m: any) => ({ value: m.id, label: `${m.firstName || ''} ${m.lastName || ''}`.trim() || m.email || m.id }))}
+                  selected={selReporters}
+                  onChange={setSelReporters}
+                />
+                <button onClick={() => toggleExtra('reporter')} className="rounded border border-gray-300 bg-white p-1 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors">
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+            {activeExtras.includes('priority') && (
+              <div className="flex items-center gap-1">
+                <DropBtn
+                  label="Priority"
+                  options={PRIORITIES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] || p }))}
+                  selected={selPriorities}
+                  onChange={setSelPriorities}
+                />
+                <button onClick={() => toggleExtra('priority')} className="rounded border border-gray-300 bg-white p-1 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors">
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+            {activeExtras.includes('label') && (
+              <div className="flex items-center gap-1">
+                <DropBtn
+                  label="Label"
+                  options={Array.from(new Set(spaces.flatMap((sp: any) => sp.labels || []).map((l: any) => l.name || l))).map((l) => ({ value: l as string, label: l as string }))}
+                  selected={selLabels}
+                  onChange={setSelLabels}
+                />
+                <button onClick={() => toggleExtra('label')} className="rounded border border-gray-300 bg-white p-1 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors">
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+            {activeExtras.includes('created') && (
+              <div className="flex items-center gap-1">
+                <DateDropBtn
+                  label="Created"
+                  selected={selCreated}
+                  onChange={setSelCreated}
+                />
+                <button onClick={() => toggleExtra('created')} className="rounded border border-gray-300 bg-white p-1 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors">
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+            {activeExtras.includes('updated') && (
+              <div className="flex items-center gap-1">
+                <DateDropBtn
+                  label="Updated"
+                  selected={selUpdated}
+                  onChange={setSelUpdated}
+                />
+                <button onClick={() => toggleExtra('updated')} className="rounded border border-gray-300 bg-white p-1 text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors">
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>}
+
+      {/* ── Results table (only on All Work tab) ── */}
+      {!showSavedPanel && <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* table header */}
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-2.5">
+          <p className="text-[12.5px] font-semibold text-gray-600">
+            {loadingIssues ? 'Loading…' : `${total.toLocaleString()} issue${total !== 1 ? 's' : ''}`}
+          </p>
+        </div>
+
+        {loadingIssues ? (
+          <DotLoader className="py-20" />
+        ) : issues.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Filter size={36} className="mb-3 text-gray-300" />
+            <p className="text-[14px] font-semibold text-gray-600">No issues found</p>
+            <p className="text-[13px] text-gray-400 mt-1">
+              {hasCriteria ? 'Try adjusting your filters' : 'No issues available'}
+            </p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50 text-gray-500">
+                <th className="px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wide w-28">Key</th>
+                <th className="px-2 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wide">Work</th>
+                <th className="px-2 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wide w-32">Assignee</th>
+                {activeExtras.includes('reporter') && (
+                  <th className="px-2 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wide w-32">Reporter</th>
+                )}
+                <th className="px-2 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wide w-28">Status</th>
+                <th className="px-2 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wide w-20 hidden md:table-cell">Priority</th>
+                <th className="px-4 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wide w-36 hidden lg:table-cell">Updated</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {issues.slice(0, 100).map((issue: any) => (
+                <tr key={issue.id || issue.key} className="group hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <IssueTypeIcon type={issue.type || 'task'} size={15} />
+                      <Link
+                        href={`/issues/${issue.cfKey ?? issue.key}`}
+                        className="font-mono text-[11.5px] font-semibold text-blue-600 hover:text-blue-800 whitespace-nowrap"
+                      >
+                        {issue.cfKey ?? issue.key}
+                      </Link>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2.5 max-w-0">
+                    <Link
+                      href={`/issues/${issue.cfKey ?? issue.key}`}
+                      className="block truncate text-[13px] text-gray-900 hover:text-blue-600 transition-colors"
+                    >
+                      {issue.summary}
+                    </Link>
+                  </td>
+                  <td className="px-2 py-2.5">
+                    {issue.assignee ? (
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-6 w-6 flex-shrink-0 rounded-full bg-blue-500 flex items-center justify-center text-[9px] font-bold text-white">
+                          {`${issue.assignee.firstName?.[0] || ''}${issue.assignee.lastName?.[0] || ''}`.toUpperCase()}
+                        </div>
+                        <span className="text-[12px] text-gray-600 truncate">
+                          {`${issue.assignee.firstName || ''} ${issue.assignee.lastName || ''}`.trim()}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[11.5px] text-gray-300">Unassigned</span>
+                    )}
+                  </td>
+                  {activeExtras.includes('reporter') && (
+                    <td className="px-2 py-2.5">
+                      {issue.reporter ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="h-6 w-6 flex-shrink-0 rounded-full bg-purple-500 flex items-center justify-center text-[9px] font-bold text-white">
+                            {`${issue.reporter.firstName?.[0] || ''}${issue.reporter.lastName?.[0] || ''}`.toUpperCase()}
+                          </div>
+                          <span className="text-[12px] text-gray-600 truncate">
+                            {`${issue.reporter.firstName || ''} ${issue.reporter.lastName || ''}`.trim()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[11.5px] text-gray-300">—</span>
+                      )}
+                    </td>
+                  )}
+                  <td className="px-2 py-2.5">
+                    <span
+                      className="inline-block rounded px-2 py-0.5 text-[11px] font-semibold text-white whitespace-nowrap"
+                      style={{ backgroundColor: issue.status?.color || '#6B7280' }}
+                    >
+                      {issue.status?.name || 'Open'}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2.5 hidden md:table-cell">
+                    <PriorityIcon priority={issue.priority} size={14} />
+                  </td>
+                  <td className="px-4 py-2.5 hidden lg:table-cell">
+                    <span className="text-[11.5px] text-gray-400 whitespace-nowrap">
+                      {(() => {
+                        const d = new Date(issue.updatedAt || issue.createdAt);
+                        if (isNaN(d.getTime())) return '—';
+                        return d.toLocaleString('en-GB', {
+                          day: '2-digit', month: 'short', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit', hour12: false,
+                        });
+                      })()}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>}
+
+      {/* ── Save modal (portal → renders outside scroll container) ── */}
+      {showSaveModal && typeof document !== 'undefined' && createPortal(
+        <SaveModal
+          criteria={currentCriteria}
+          editFilter={editingFilter}
+          onClose={() => { setShowSaveModal(false); setEditingFilter(null); }}
+          onSaved={(f) => {
+            setShowSaveModal(false); setEditingFilter(null);
+            loadSavedFilters(); setActiveFilterId(f?.id || null);
+          }}
+        />,
+        document.body,
+      )}
+
+      {/* ── Delete confirm (portal) ── */}
+      {deleteConfirmId && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40">
+          <div className="w-[360px] rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-[15px] font-semibold text-gray-900 mb-2">Delete filter</h3>
+            <p className="text-[13px] text-gray-500 mb-5">Are you sure? This cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteConfirmId(null)}
+                className="rounded-md border border-gray-300 px-4 py-1.5 text-[12.5px] font-medium text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={() => handleDelete(deleteConfirmId)}
+                className="rounded-md bg-red-600 px-4 py-1.5 text-[12.5px] font-semibold text-white hover:bg-red-700">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}

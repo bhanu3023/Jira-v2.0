@@ -1,0 +1,10 @@
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+const adapter = new PrismaPg({ connectionString: 'postgresql://postgres:neutara123@localhost:5432/neutara_db' });
+const prisma = new PrismaClient({ adapter });
+const fake = await prisma.user.findMany({ where: { email: { contains: 'sops_' } }, select: { email: true } });
+console.log('Remaining fake sops_ users:', fake.length);
+const fixed = await prisma.user.findMany({ where: { email: { in: ['rahul.gowda@cloudfuze.com','chandan.gowda@cloudfuze.com','sravani@cloudfuze.com','gopikrishna@cloudfuze.com','raya.durai@cloudfuze.com','sakshi.priya@cloudfuze.com'] } }, select: { displayName: true, email: true } });
+console.log('Fixed users:');
+fixed.forEach(u => console.log(' ', u.displayName, '|', u.email));
+await prisma.$disconnect();

@@ -1,0 +1,218 @@
+[
+  {
+    "id": "cf_story_points",
+    "name": "Story Points",
+    "fieldType": "number",
+    "fieldTypeLabel": "Number",
+    "source": "custom",
+    "required": false,
+    "boardsUsedIn": "All boards",
+    "isDeleted": false,
+    "spaceIds": []
+  },
+  {
+    "id": "m_9d4q7w4ksg",
+    "name": "Time to Resolution",
+    "fieldType": "select-multi",
+    "description": "",
+    "options": [
+      "No",
+      "Yes"
+    ],
+    "spaceIds": [
+      "s_infra",
+      "m_0pgkctp391",
+      "m_7gh2ba5va0"
+    ],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-04-28T09:46:41.956Z",
+    "createIssueSpaceIds": []
+  },
+  {
+    "id": "m_2jpls46rg3",
+    "name": "Time to First Response",
+    "fieldType": "select-multi",
+    "description": "",
+    "options": [
+      "No",
+      "Yes"
+    ],
+    "spaceIds": [
+      "s_infra",
+      "m_0pgkctp391",
+      "m_7gh2ba5va0"
+    ],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-04-28T09:47:08.426Z",
+    "createIssueSpaceIds": []
+  },
+  {
+    "id": "m_fqytzo3akw",
+    "name": "Project Manager",
+    "type": "User",
+    "required": false,
+    "spaceIds": [
+      "411a43b4-bb95-4e86-b98b-cf9b9714a46b",
+      "0229d3dc-9f0c-4322-8d50-f078d3c31be6",
+      "942ae277-9aa8-4037-9b9c-80d8cab93d78",
+      "fd28d092-0bc8-4027-b014-dda16af1c707",
+      "3875726d-6a82-45fc-af1a-663479e75ec5",
+      "7c4221b3-3a93-486d-a6ec-a57f33c9bc5d",
+      "a2035482-7fbf-4505-a78e-ca3de0f1af0c",
+      "2b04ca19-4cdd-4580-9973-456b6c59caad",
+      "b94a8ac8-6854-4c1c-a8df-ef1a2d32e876",
+      "s_qaboar",
+      "0d159c08-fb1c-4779-85f6-b2a7cf84e4f8",
+      "m_ecllzsmplf"
+    ],
+    "createIssueSpaceIds": [],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-05-12T13:35:22.734Z"
+  },
+  {
+    "id": "m_k0zt9wrxoh",
+    "name": "Department",
+    "fieldType": "department-routing",
+    "description": "",
+    "options": [
+      "Migration|L1BOAR|",
+      "Dev|L2BOARD,L3BOARD|",
+      "QA|QABOAR|",
+      "Infra|INFRABOARD|"
+    ],
+    "spaceIds": [
+      "7c4221b3-3a93-486d-a6ec-a57f33c9bc5d",
+      "3875726d-6a82-45fc-af1a-663479e75ec5",
+      "m_ecllzsmplf",
+      "fd28d092-0bc8-4027-b014-dda16af1c707",
+      "s_qaboar",
+      "pg_92q07qtnlz"
+    ],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-05-26T08:18:27.519Z",
+    "createIssueSpaceIds": []
+  },
+  {
+    "id": "m_zrpowietyp",
+    "name": "Customer Name",
+    "fieldType": "Text",
+    "spaceIds": [
+      "411a43b4-bb95-4e86-b98b-cf9b9714a46b",
+      "0229d3dc-9f0c-4322-8d50-f078d3c31be6",
+      "942ae277-9aa8-4037-9b9c-80d8cab93d78",
+      "fd28d092-0bc8-4027-b014-dda16af1c707",
+      "m_ecllzsmplf",
+      "3875726d-6a82-45fc-af1a-663479e75ec5",
+      "7c4221b3-3a93-486d-a6ec-a57f33c9bc5d",
+      "a2035482-7fbf-4505-a78e-ca3de0f1af0c",
+      "2b04ca19-4cdd-4580-9973-456b6c59caad",
+      "s_qaboar",
+      "0d159c08-fb1c-4779-85f6-b2a7cf84e4f8"
+    ],
+    "createIssueSpaceIds": [],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-06-03T14:05:58.459Z"
+  },
+  {
+    "id": "m_fnk20v4g9l",
+    "name": "Product Type",
+    "fieldType": "Select List (single choice)",
+    "spaceIds": [
+      "411a43b4-bb95-4e86-b98b-cf9b9714a46b",
+      "0229d3dc-9f0c-4322-8d50-f078d3c31be6",
+      "942ae277-9aa8-4037-9b9c-80d8cab93d78",
+      "fd28d092-0bc8-4027-b014-dda16af1c707",
+      "m_ecllzsmplf",
+      "3875726d-6a82-45fc-af1a-663479e75ec5",
+      "7c4221b3-3a93-486d-a6ec-a57f33c9bc5d",
+      "a2035482-7fbf-4505-a78e-ca3de0f1af0c",
+      "2b04ca19-4cdd-4580-9973-456b6c59caad",
+      "s_qaboar",
+      "0d159c08-fb1c-4779-85f6-b2a7cf84e4f8"
+    ],
+    "createIssueSpaceIds": [
+      "411a43b4-bb95-4e86-b98b-cf9b9714a46b",
+      "0229d3dc-9f0c-4322-8d50-f078d3c31be6",
+      "942ae277-9aa8-4037-9b9c-80d8cab93d78",
+      "fd28d092-0bc8-4027-b014-dda16af1c707",
+      "m_ecllzsmplf",
+      "2b04ca19-4cdd-4580-9973-456b6c59caad",
+      "a2035482-7fbf-4505-a78e-ca3de0f1af0c",
+      "7c4221b3-3a93-486d-a6ec-a57f33c9bc5d",
+      "3875726d-6a82-45fc-af1a-663479e75ec5"
+    ],
+    "source": "custom",
+    "isDeleted": true,
+    "createdAt": "2026-06-03T14:06:05.315Z"
+  },
+  {
+    "id": "m_1l1pbvs79l",
+    "name": "Combination",
+    "fieldType": "Select List (multiple choices)",
+    "spaceIds": [
+      "411a43b4-bb95-4e86-b98b-cf9b9714a46b",
+      "0229d3dc-9f0c-4322-8d50-f078d3c31be6",
+      "942ae277-9aa8-4037-9b9c-80d8cab93d78",
+      "fd28d092-0bc8-4027-b014-dda16af1c707",
+      "3875726d-6a82-45fc-af1a-663479e75ec5",
+      "7c4221b3-3a93-486d-a6ec-a57f33c9bc5d",
+      "a2035482-7fbf-4505-a78e-ca3de0f1af0c",
+      "2b04ca19-4cdd-4580-9973-456b6c59caad",
+      "s_qaboar",
+      "0d159c08-fb1c-4779-85f6-b2a7cf84e4f8",
+      "m_ecllzsmplf"
+    ],
+    "createIssueSpaceIds": [],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-06-03T14:18:47.728Z"
+  },
+  {
+    "id": "m_igu8gjmi1h",
+    "name": "Product Type",
+    "fieldType": "select-multi",
+    "description": "",
+    "options": [
+      "Content",
+      "Message"
+    ],
+    "spaceIds": [],
+    "source": "custom",
+    "isDeleted": true,
+    "createdAt": "2026-06-17T11:44:29.882Z"
+  },
+  {
+    "id": "m_30gkudc2hu",
+    "name": "Product Type",
+    "fieldType": "select-multi",
+    "description": "",
+    "options": [
+      "Message",
+      "Content"
+    ],
+    "spaceIds": [],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-06-17T11:48:14.877Z"
+  },
+  {
+    "id": "m_9iikb8d6qh",
+    "name": "Department",
+    "fieldType": "select-single",
+    "description": "",
+    "options": [
+      "DEV",
+      "Migration",
+      "QA"
+    ],
+    "spaceIds": [],
+    "source": "custom",
+    "isDeleted": false,
+    "createdAt": "2026-06-22T08:34:35.166Z"
+  }
+]

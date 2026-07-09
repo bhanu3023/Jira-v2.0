@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Prisma generated client
+/src/generated/prisma
+
+# Logs
+*.log
+next-dev.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Seed/raw data files (now in PostgreSQL)
+.jira-issues-seed.json
+.jira-users-seed.json
+.jira-spaces-seed.json
+.jira-deleted-spaces.json
+
+# OAuth tokens (persisted on disk)
+.oauth-tokens.json
+
+# Large files - not tracked in git
+neutara_db_dump.sql
+neutara_db_dump.sql.gz
+public/uploads/attachments/
+db-backup/*.sql
+db-backup/*.dump
+neutara_db_dump.sql.gz
+
+.env.local
