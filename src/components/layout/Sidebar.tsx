@@ -896,12 +896,32 @@ function SMSpaceSubNav({ spaceKey, pathname }: { spaceKey: string; pathname: str
       d.agents?.some((a: any) => a.userId === userId && a.isShiftLead)
     );
 
-  // Load custom queues from localStorage
+  // Load custom queues from DB (migrate from localStorage if DB is empty)
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
-      if (stored) setCustomQueues(JSON.parse(stored));
-    } catch {}
+    if (!spaceKey) return;
+    api.request<any[]>(`custom-queues/${spaceKey}`).then((q) => {
+      if (Array.isArray(q) && q.length > 0) {
+        setCustomQueues(q);
+      } else {
+        // DB is empty — check localStorage and migrate
+        try {
+          const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
+          if (stored) {
+            const local = JSON.parse(stored);
+            if (Array.isArray(local) && local.length > 0) {
+              setCustomQueues(local);
+              // Push to DB so server has them too
+              api.request(`custom-queues/${spaceKey}`, { method: 'PUT', body: JSON.stringify(local) }).catch(() => {});
+            }
+          }
+        } catch {}
+      }
+    }).catch(() => {
+      try {
+        const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
+        if (stored) setCustomQueues(JSON.parse(stored));
+      } catch {}
+    });
   }, [spaceKey]);
 
   // Load space members for the create-queue form
@@ -914,6 +934,7 @@ function SMSpaceSubNav({ spaceKey, pathname }: { spaceKey: string; pathname: str
 
   const saveQueues = (queues: CustomQueue[]) => {
     setCustomQueues(queues);
+    api.request(`custom-queues/${spaceKey}`, { method: 'PUT', body: JSON.stringify(queues) }).catch(() => {});
     try { localStorage.setItem(`custom_queues_${spaceKey}`, JSON.stringify(queues)); } catch {}
   };
 

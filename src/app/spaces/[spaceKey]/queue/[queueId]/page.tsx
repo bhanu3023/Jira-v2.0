@@ -747,14 +747,21 @@ export default function QueueSettingsPage() {
   const [dbSlaIds, setDbSlaIds] = useState<Record<string, string>>({}); // policyId → DB id
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
-      if (stored) {
-        const queues: CustomQueue[] = JSON.parse(stored);
-        const q = queues.find(q => q.id === queueId);
+    api.request<any[]>(`custom-queues/${spaceKey}`).then((queues) => {
+      if (Array.isArray(queues)) {
+        const q = queues.find((q: any) => q.id === queueId);
         if (q) { setQueue(q); setPolicies(q.slaPolicies || []); }
       }
-    } catch {}
+    }).catch(() => {
+      try {
+        const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
+        if (stored) {
+          const queues: CustomQueue[] = JSON.parse(stored);
+          const q = queues.find(q => q.id === queueId);
+          if (q) { setQueue(q); setPolicies(q.slaPolicies || []); }
+        }
+      } catch {}
+    });
     // Also load from DB to get DB ids for update/delete
     api.getSLAs(spaceKey).then((rows: any[]) => {
       const map: Record<string, string> = {};
@@ -770,12 +777,13 @@ export default function QueueSettingsPage() {
     }).catch(() => {});
   }, [spaceKey]);
 
-  const persistQueue = (updated: CustomQueue) => {
+  const persistQueue = async (updated: CustomQueue) => {
     try {
-      const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
-      const queues: CustomQueue[] = stored ? JSON.parse(stored) : [];
-      const next = queues.map(q => q.id === queueId ? updated : q);
-      localStorage.setItem(`custom_queues_${spaceKey}`, JSON.stringify(next));
+      const queues = await api.request<any[]>(`custom-queues/${spaceKey}`).catch(() => []);
+      const list: CustomQueue[] = Array.isArray(queues) ? queues : [];
+      const next = list.map(q => q.id === queueId ? updated : q);
+      await api.request(`custom-queues/${spaceKey}`, { method: 'PUT', body: JSON.stringify(next) });
+      try { localStorage.setItem(`custom_queues_${spaceKey}`, JSON.stringify(next)); } catch {}
       setQueue(updated);
     } catch {}
   };

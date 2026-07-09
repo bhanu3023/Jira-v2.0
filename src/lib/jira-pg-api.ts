@@ -3951,6 +3951,28 @@ async function _handleJiraPgApi(
     }
   }
 
+  // GET /custom-queues/:spaceKey — load queues from DB
+  // PUT /custom-queues/:spaceKey — save queues to DB
+  if (path.startsWith('custom-queues/')) {
+    const spaceKey = path.split('/')[1];
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS custom_queues (space_key TEXT PRIMARY KEY, queues JSONB NOT NULL DEFAULT '[]', updated_at TIMESTAMPTZ DEFAULT NOW())`
+    );
+    if (method === 'GET') {
+      const row = await pool.query(`SELECT queues FROM custom_queues WHERE space_key = $1`, [spaceKey]);
+      return json(row.rows[0]?.queues || []);
+    }
+    if (method === 'PUT') {
+      const queues = await req.json();
+      await pool.query(
+        `INSERT INTO custom_queues (space_key, queues, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (space_key) DO UPDATE SET queues = EXCLUDED.queues, updated_at = NOW()`,
+        [spaceKey, JSON.stringify(queues)]
+      );
+      return json({ ok: true });
+    }
+  }
+
   // POST /sla-breach-check â€” notify assignee, reporter, leads/shift leads 30 min before breach
   if (path === 'sla-breach-check' && method === 'POST') {
     const warnMs = 30 * 60 * 1000; // 30 minutes

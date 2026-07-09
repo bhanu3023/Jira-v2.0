@@ -164,17 +164,34 @@ function SpaceDetailContent() {
   }, [search]);
   const [closedIssues, setClosedIssues] = useState<any[]>([]);
   const [deptFilter, setDeptFilter] = useState<string>(''); // '' = all departments
-  // Active custom queue object (loaded from localStorage when queueFilter is a custom queue id)
+  const [allCustomQueues, setAllCustomQueues] = useState<{ id: string; name: string; memberIds: string[] }[]>([]);
+  useEffect(() => {
+    if (!spaceKey) return;
+    api.request<any[]>(`custom-queues/${spaceKey}`).then((q) => {
+      if (Array.isArray(q)) setAllCustomQueues(q);
+    }).catch(() => {
+      try {
+        const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
+        if (stored) setAllCustomQueues(JSON.parse(stored));
+      } catch {}
+    });
+  }, [spaceKey]);
+
+  // Active custom queue object (loaded from DB when queueFilter is a custom queue id)
   const [activeCustomQueue, setActiveCustomQueue] = useState<{ id: string; name: string; memberIds: string[] } | null>(null);
   useEffect(() => {
     if (!queueFilter.startsWith('cq_')) { setActiveCustomQueue(null); return; }
-    try {
-      const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
-      if (stored) {
-        const queues: { id: string; name: string; memberIds: string[] }[] = JSON.parse(stored);
-        setActiveCustomQueue(queues.find(q => q.id === queueFilter) || null);
-      }
-    } catch { setActiveCustomQueue(null); }
+    api.request<any[]>(`custom-queues/${spaceKey}`).then((queues) => {
+      if (Array.isArray(queues)) setActiveCustomQueue(queues.find((q: any) => q.id === queueFilter) || null);
+    }).catch(() => {
+      try {
+        const stored = localStorage.getItem(`custom_queues_${spaceKey}`);
+        if (stored) {
+          const queues: { id: string; name: string; memberIds: string[] }[] = JSON.parse(stored);
+          setActiveCustomQueue(queues.find(q => q.id === queueFilter) || null);
+        }
+      } catch { setActiveCustomQueue(null); }
+    });
   }, [queueFilter, spaceKey]);
   const [rrDepartments, setRrDepartments] = useState<string[]>([]); // from RR config
 
@@ -1065,8 +1082,7 @@ function SpaceDetailContent() {
           { id: 'all-requests',  label: 'All Requests',    desc: 'Every ticket ever created in this space' },
           { id: 'sent-watching', label: 'Sent / Watching', desc: 'Tickets you reported or are watching'    },
         ];
-        let customQueues: { id: string; name: string; memberIds: string[] }[] = [];
-        try { customQueues = JSON.parse(localStorage.getItem(`custom_queues_${spaceKey}`) || '[]'); } catch (e) { customQueues = []; }
+        const customQueues = allCustomQueues;
         return (
           <div className="flex-1 overflow-y-auto px-6 py-6">
             <h2 className="text-[15px] font-semibold text-gray-800 mb-1">Queues</h2>
