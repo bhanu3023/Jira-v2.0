@@ -193,6 +193,8 @@ function PeopleSection({
   const [removingId,   setRemovingId]   = useState<string | null>(null);
   const [resendingId,  setResendingId]  = useState<string | null>(null);
   const [resendMsg,    setResendMsg]    = useState<{id:string; ok:boolean; text:string} | null>(null);
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+  const [suspendingId, setSuspendingId] = useState<string | null>(null);
 
   // Members already in this space — match by email to avoid member-id vs user-id mismatch
   const memberEmails = new Set(
@@ -236,7 +238,7 @@ function PeopleSection({
 
   return (
     <Section title="People and access" description="Manage who has access to this space and their roles.">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" onClick={() => setActionMenuId(null)}>
 
         {/* Sticky bar: Members count + Add button */}
         <div className="sticky top-0 z-20 bg-white px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
@@ -326,52 +328,83 @@ function PeopleSection({
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {/* Resend invite */}
+                    <div className="relative flex items-center justify-end">
+                      {resendMsg?.id === m.id && (
+                        <span className={`mr-2 text-[11px] font-medium ${resendMsg.ok ? 'text-green-600' : 'text-red-500'}`}>
+                          {resendMsg.text}
+                        </span>
+                      )}
                       <button
-                        disabled={resendingId === m.id}
-                        onClick={async () => {
-                          setResendingId(m.id);
-                          setResendMsg(null);
-                          try {
-                            const res = await fetch('/api/users/invite', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                email: email,
-                                firstName,
-                                lastName,
-                                role,
-                                invitedBy: 'Admin',
-                              }),
-                            });
-                            const data = await res.json();
-                            setResendMsg({ id: m.id, ok: data.emailSent, text: data.emailSent ? 'Invite sent!' : 'Email not configured' });
-                          } catch {
-                            setResendMsg({ id: m.id, ok: false, text: 'Failed to send' });
-                          } finally {
-                            setResendingId(null);
-                            setTimeout(() => setResendMsg(null), 3000);
-                          }
-                        }}
-                        className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2.5 py-1 text-[11.5px] font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-all disabled:opacity-50">
-                        {resendingId === m.id ? '...' : (resendMsg?.id === m.id ? (resendMsg?.ok ? '✓ Sent' : (resendMsg?.text ?? 'Error')) : 'Resend')}
+                        onClick={(e) => { e.stopPropagation(); setActionMenuId(actionMenuId === m.id ? null : m.id); }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-[12px] font-medium text-gray-600 bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
+                        Actions <ChevronDown size={12} className="text-gray-400" />
                       </button>
-                      {/* Remove member */}
-                      {role !== 'admin' && (
-                        <button
-                          disabled={removingId === m.id}
-                          onClick={async () => {
-                            if (!confirm(`Remove ${firstName} ${lastName} from this space?`)) return;
-                            setRemovingId(m.id);
-                            try {
-                              await fetch(`/api/spaces/${spaceKey}/members/${m.userId || m.id}`, { method: 'DELETE' });
-                              onReload();
-                            } finally { setRemovingId(null); }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all disabled:opacity-50">
-                          {removingId === m.id ? '...' : <X size={14} />}
-                        </button>
+                      {actionMenuId === m.id && (
+                        <div
+                          className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-30 py-1"
+                          onClick={e => e.stopPropagation()}>
+                          {/* Resend invite */}
+                          <button
+                            disabled={resendingId === m.id}
+                            onClick={async () => {
+                              setActionMenuId(null);
+                              setResendingId(m.id);
+                              setResendMsg(null);
+                              try {
+                                const res = await fetch('/api/users/invite', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ email, firstName, lastName, role, invitedBy: 'Admin' }),
+                                });
+                                const data = await res.json();
+                                setResendMsg({ id: m.id, ok: data.emailSent, text: data.emailSent ? 'Invite sent!' : 'Not configured' });
+                              } catch {
+                                setResendMsg({ id: m.id, ok: false, text: 'Failed to send' });
+                              } finally {
+                                setResendingId(null);
+                                setTimeout(() => setResendMsg(null), 3000);
+                              }
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gray-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50">
+                            <Mail size={13} /> {resendingId === m.id ? 'Sending…' : 'Resend invite'}
+                          </button>
+                          {/* Suspend */}
+                          <button
+                            disabled={suspendingId === m.id}
+                            onClick={async () => {
+                              setActionMenuId(null);
+                              if (!confirm(`Suspend ${firstName} ${lastName}? They will not be able to log in.`)) return;
+                              setSuspendingId(m.id);
+                              try {
+                                await fetch(`/api/jira-pg?path=users/${m.userId || m.id}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ isActive: false }),
+                                });
+                                onReload();
+                              } finally { setSuspendingId(null); }
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gray-700 hover:bg-yellow-50 hover:text-yellow-700 disabled:opacity-50">
+                            <Power size={13} /> {suspendingId === m.id ? 'Suspending…' : 'Suspend'}
+                          </button>
+                          {/* Divider */}
+                          <div className="border-t border-gray-100 my-1" />
+                          {/* Delete / Remove */}
+                          <button
+                            disabled={removingId === m.id}
+                            onClick={async () => {
+                              setActionMenuId(null);
+                              if (!confirm(`Remove ${firstName} ${lastName} from this space?`)) return;
+                              setRemovingId(m.id);
+                              try {
+                                await fetch(`/api/spaces/${spaceKey}/members/${m.userId || m.id}`, { method: 'DELETE' });
+                                onReload();
+                              } finally { setRemovingId(null); }
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 disabled:opacity-50">
+                            <Trash2 size={13} /> {removingId === m.id ? 'Removing…' : 'Delete'}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </td>
