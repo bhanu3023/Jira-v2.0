@@ -235,28 +235,35 @@ function PeopleSection({
 
   return (
     <Section title="People and access" description="Manage who has access to this space and their roles.">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
 
-        {/* Header */}
-        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-          <p className="text-sm font-bold text-gray-700">Members ({currentSpace.members?.length || 0})</p>
-          <button onClick={openModal}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 text-white text-[12.5px] font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Plus size={14} /> Add member
-          </button>
+        {/* Sticky header row: title + add button + column names */}
+        <div className="sticky top-0 z-10 bg-white rounded-t-xl border-b border-gray-200">
+          <div className="px-5 py-3.5 flex items-center justify-between">
+            <p className="text-sm font-bold text-gray-700">Members ({currentSpace.members?.length || 0})</p>
+            <button onClick={openModal}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 text-white text-[12.5px] font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+              <Plus size={14} /> Add member
+            </button>
+          </div>
+          <table className="w-full">
+            <thead className="bg-gray-50 border-t border-gray-100">
+              <tr>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Name</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Email</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Role</th>
+                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Department</th>
+                <th className="px-5 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wide">Actions</th>
+              </tr>
+            </thead>
+          </table>
         </div>
 
-        {/* Members table */}
+        {/* Scrollable body */}
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
-            <tr>
-              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Name</th>
-              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Email</th>
-              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Role</th>
-              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Department</th>
-              <th className="px-5 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wide">Actions</th>
-            </tr>
-          </thead>
+          <colgroup>
+            <col className="w-[30%]" /><col className="w-[28%]" /><col className="w-[12%]" /><col className="w-[15%]" /><col className="w-[15%]" />
+          </colgroup>
           <tbody className="divide-y divide-gray-50">
             {(currentSpace.members || []).map((m: any) => {
               const firstName = m.firstName || m.user?.firstName || '';
