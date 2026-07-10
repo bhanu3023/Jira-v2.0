@@ -46,6 +46,7 @@ interface AppState {
   notifications: Notification[];
   unreadCount: number;
   loadNotifications: () => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
 
   // Dashboard
   dashboard: DashboardData | null;
@@ -190,6 +191,14 @@ export const useStore = create<AppState>((set, get) => ({
       loadNotificationsInflight = null;
     });
     return loadNotificationsInflight;
+  },
+  markAllNotificationsRead: async () => {
+    // Optimistically clear the badge immediately
+    set(s => ({ unreadCount: 0, notifications: s.notifications.map((n: any) => ({ ...n, isRead: true })) }));
+    try { await api.markAllRead(); } catch {}
+    // Sync with server
+    const { notifications, unreadCount } = await api.getNotifications();
+    set({ notifications, unreadCount });
   },
 
   // Dashboard

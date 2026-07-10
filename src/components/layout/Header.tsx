@@ -26,13 +26,14 @@ import {
 const PRIVILEGED_ROLES = ['admin'];
 
 export default function Header() {
-  const { user, logout, notifications, unreadCount, loadNotifications, spaces, loadIssues } = useStore(
+  const { user, logout, notifications, unreadCount, loadNotifications, markAllNotificationsRead, spaces, loadIssues } = useStore(
     useShallow((s) => ({
       user: s.user,
       logout: s.logout,
       notifications: s.notifications,
       unreadCount: s.unreadCount,
       loadNotifications: s.loadNotifications,
+      markAllNotificationsRead: s.markAllNotificationsRead,
       spaces: s.spaces,
       loadIssues: s.loadIssues,
     })),
@@ -249,10 +250,7 @@ export default function Header() {
                 <div className="sticky top-0 flex items-center justify-between rounded-t-lg border-b border-gray-200 bg-white px-4 py-3">
                   <span className="text-[15px] font-semibold text-jira-dark">Notifications</span>
                   <button
-                    onClick={() => {
-                      api.markAllRead();
-                      loadNotifications();
-                    }}
+                    onClick={() => markAllNotificationsRead()}
                     className="text-[11px] font-semibold text-blue-600 hover:text-blue-800"
                   >
                     Mark all read
