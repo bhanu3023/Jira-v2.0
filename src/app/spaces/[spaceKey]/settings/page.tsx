@@ -15,6 +15,7 @@ import {
   Mail, Copy, ToggleLeft, ToggleRight, RefreshCw, Shield, Filter, ExternalLink, Power, Search
 } from 'lucide-react';
 import { PriorityIcon, getPriorityMeta } from '@/components/ui/PriorityIcon';
+import { ROLE_LABELS, SELECTABLE_ROLES } from '@/lib/permissions';
 
 // ── Sidebar nav ───────────────────────────────────────────────────────────────
 const NAV = [
@@ -292,10 +293,9 @@ function PeopleSection({
                       }}
                       className="text-[12px] border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                     >
-                      <option value="admin">Admin</option>
-                      <option value="lead">Lead</option>
-                      <option value="shift_lead">Shift Lead</option>
-                      <option value="agent">Agent</option>
+                      {SELECTABLE_ROLES.map(r => (
+                        <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                      ))}
                     </select>
                   </td>
                   <td className="px-5 py-3.5">
