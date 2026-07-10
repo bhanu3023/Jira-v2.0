@@ -414,7 +414,18 @@ function PeopleSection({
                               if (!confirm(`Remove ${firstName} ${lastName} from this space?`)) return;
                               setRemovingId(m.id);
                               try {
-                                const res = await fetch(`/api/spaces/${spaceKey}/members/${m.userId || m.id}`, { method: 'DELETE' });
+                                // Resolve the real userId — m.id may be an email in some data shapes
+                                let memberId = m.userId || m.id;
+                                if (!memberId || memberId.includes('@')) {
+                                  // Look up userId by email
+                                  const usersRes = await fetch('/api/users', { headers: { 'Authorization': `Bearer ${localStorage.getItem('jira_token')}` } });
+                                  if (usersRes.ok) {
+                                    const allUsers = await usersRes.json();
+                                    const found = allUsers.find((u: any) => u.email === email);
+                                    if (found) memberId = found.id;
+                                  }
+                                }
+                                const res = await fetch(`/api/spaces/${spaceKey}/members/${memberId}`, { method: 'DELETE' });
                                 if (!res.ok) {
                                   const err = await res.json().catch(() => ({}));
                                   alert(`Failed to remove member: ${err.error || res.status}`);
