@@ -739,6 +739,7 @@ export default function QueueSettingsPage() {
   const [tab, setTab] = useState<'people' | 'sla' | 'rr' | 'email'>(initialTab);
   const [queue, setQueue] = useState<CustomQueue | null>(null);
   const [spaceMembers, setSpaceMembers] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
   const [showAddMember, setShowAddMember] = useState(false);
   const [spaceName, setSpaceName] = useState('');
@@ -774,6 +775,10 @@ export default function QueueSettingsPage() {
     api.getSpace(spaceKey).then((sp: any) => {
       setSpaceName(sp?.name || spaceKey);
       setSpaceMembers(sp?.members || []);
+    }).catch(() => {});
+    // Load ALL users so invited users (not yet in space) also appear in search
+    api.request<any[]>('users').then((users) => {
+      if (Array.isArray(users)) setAllUsers(users);
     }).catch(() => {});
   }, [spaceKey]);
 
@@ -834,12 +839,29 @@ export default function QueueSettingsPage() {
   const removeMember  = (id: string) => { if (!queue) return; persistQueue({ ...queue, memberIds: queue.memberIds.filter(x => x !== id), suspendedIds: (queue.suspendedIds||[]).filter(x => x !== id) }); };
   const suspendMember = (id: string) => { if (!queue) return; persistQueue({ ...queue, suspendedIds: [...(queue.suspendedIds||[]), id] }); };
   const reactivate    = (id: string) => { if (!queue) return; persistQueue({ ...queue, suspendedIds: (queue.suspendedIds||[]).filter(x => x !== id) }); };
-  const addMember     = (id: string) => { if (!queue) return; persistQueue({ ...queue, memberIds: [...queue.memberIds, id] }); setMemberSearch(''); setShowAddMember(false); };
+  const addMember = async (id: string) => {
+    if (!queue) return;
+    // If user is not in space_members yet, add them first
+    const inSpace = spaceMembers.some(m => (m.user||m).id === id);
+    if (!inSpace) {
+      await api.request(`spaces/${spaceKey}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ userId: id, role: 'member' }),
+      }).catch(() => {});
+      // Refresh space members
+      const sp = await api.getSpace(spaceKey).catch(() => null);
+      if (sp) setSpaceMembers(sp.members || []);
+    }
+    persistQueue({ ...queue, memberIds: [...queue.memberIds, id] });
+    setMemberSearch(''); setShowAddMember(false);
+  };
 
   if (!queue) return <div className="flex items-center justify-center h-screen text-gray-400 text-[13px]">Loading queue…</div>;
 
-  const members = spaceMembers.filter(m => { const mb = m.user||m; return queue.memberIds.includes(mb.id); });
-  const nonMembers = spaceMembers.filter(m => { const mb = m.user||m; return !queue.memberIds.includes(mb.id); });
+  // Use allUsers for member search so invited users who logged in also appear
+  const userPool = allUsers.length > 0 ? allUsers : spaceMembers;
+  const members = userPool.filter(m => { const mb = m.user||m; return queue.memberIds.includes(mb.id); });
+  const nonMembers = userPool.filter(m => { const mb = m.user||m; return !queue.memberIds.includes(mb.id); });
   const suspended = queue.suspendedIds || [];
 
   return (
