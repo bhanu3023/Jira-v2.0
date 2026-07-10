@@ -195,6 +195,7 @@ function PeopleSection({
   const [resendMsg,    setResendMsg]    = useState<{id:string; ok:boolean; text:string} | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const [suspendingId, setSuspendingId] = useState<string | null>(null);
+  const [memberFilter, setMemberFilter] = useState('');
 
   // Members already in this space — match by email to avoid member-id vs user-id mismatch
   const memberEmails = new Set(
@@ -240,11 +241,21 @@ function PeopleSection({
     <Section title="People and access" description="Manage who has access to this space and their roles.">
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" onClick={() => setActionMenuId(null)}>
 
-        {/* Sticky bar: Members count + Add button */}
-        <div className="sticky top-0 z-20 bg-white px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-          <p className="text-sm font-bold text-gray-700">Members ({currentSpace.members?.length || 0})</p>
+        {/* Sticky bar: Members count + Search + Add button */}
+        <div className="sticky top-0 z-20 bg-white px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
+          <p className="text-sm font-bold text-gray-700 whitespace-nowrap">Members ({currentSpace.members?.length || 0})</p>
+          <div className="flex-1 relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search members..."
+              value={memberFilter}
+              onChange={e => setMemberFilter(e.target.value)}
+              className="w-full pl-7 pr-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-gray-50"
+            />
+          </div>
           <button onClick={openModal}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 text-white text-[12.5px] font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 text-white text-[12.5px] font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap">
             <Plus size={14} /> Add member
           </button>
         </div>
@@ -265,7 +276,13 @@ function PeopleSection({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {(currentSpace.members || []).map((m: any) => {
+            {(currentSpace.members || []).filter((m: any) => {
+              if (!memberFilter.trim()) return true;
+              const q = memberFilter.toLowerCase();
+              const name = `${m.firstName || m.user?.firstName || ''} ${m.lastName || m.user?.lastName || ''}`.toLowerCase();
+              const email = (m.email || m.user?.email || '').toLowerCase();
+              return name.includes(q) || email.includes(q);
+            }).map((m: any) => {
               const firstName = m.firstName || m.user?.firstName || '';
               const lastName  = m.lastName  || m.user?.lastName  || '';
               const email     = m.email     || m.user?.email     || '';
