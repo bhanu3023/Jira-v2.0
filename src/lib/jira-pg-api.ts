@@ -1379,8 +1379,9 @@ async function _handleJiraPgApi(
     const memberUserId = spaceMemberDelete[2];
     const sp = await db.space.findUnique({ where: { key }, include: { members: true } });
     if (!sp) return json({ error: 'Not found' }, 404);
-    const isSpaceAdmin = sp.members.some(m => m.userId === userId && m.role === 'admin');
-    if (!isAdmin && !isSpaceAdmin) return json({ error: 'Forbidden' }, 403);
+    const isPrivilegedGlobal = ['admin', 'manager', 'lead', 'shift_lead'].includes(currentUser?.role || '');
+    const isSpaceAdmin = sp.members.some(m => m.userId === userId && ['admin', 'lead', 'shift_lead'].includes(m.role));
+    if (!isPrivilegedGlobal && !isSpaceAdmin) return json({ error: 'Forbidden' }, 403);
     try {
       await db.spaceMember.delete({
         where: { spaceId_userId: { spaceId: sp.id, userId: memberUserId } },
