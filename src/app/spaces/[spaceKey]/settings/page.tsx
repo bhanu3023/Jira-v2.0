@@ -3522,13 +3522,15 @@ function SpaceSettingsContent() {
 
         {/* People */}
         {tab === 'people' && (
-          <PeopleSection
-            currentSpace={currentSpace}
-            users={users}
-            spaceKey={spaceKey}
-            onAddMember={handleAddMember}
-            onReload={() => loadSpace(spaceKey)}
-          />
+          currentSpace
+            ? <PeopleSection
+                currentSpace={currentSpace}
+                users={users}
+                spaceKey={spaceKey}
+                onAddMember={handleAddMember}
+                onReload={() => loadSpace(spaceKey)}
+              />
+            : <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Loading…</div>
         )}
 
         {/* Permissions */}
