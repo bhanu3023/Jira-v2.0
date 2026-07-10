@@ -147,10 +147,9 @@ export const useStore = create<AppState>((set, get) => ({
   issueTotal: 0,
   issuePage: 1,
   loadIssues: async (params = {}) => {
-    // Don't set loading:true — keeps existing issues visible while refreshing,
-    // so navigating between sections feels instant with no blank flash.
+    set({ loading: true });
     const data = await api.getIssues(params);
-    set({ issues: data.issues, issueTotal: data.total, issuePage: data.page });
+    set({ issues: data.issues, issueTotal: data.total, issuePage: data.page, loading: false });
   },
   loadIssue: async (key) => {
     try {

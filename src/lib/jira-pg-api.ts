@@ -959,8 +959,8 @@ export async function handleJiraPgApi(
       const isArrayPath = arrayPaths.some(a => p === a || p.startsWith(a + '/') || p.endsWith('/' + a));
       return json(isArrayPath ? [] : { total: 0, data: [], dev_db_unavailable: true });
     }
-    console.error('[API] Unhandled error:', err?.message || err);
-    return json({ error: 'Internal server error' }, 500);
+    console.error('[API] Unhandled error:', err?.message || err, err?.stack);
+    return json({ error: err?.message || 'Internal server error' }, 500);
   }
 }
 
@@ -2042,6 +2042,8 @@ async function _handleJiraPgApi(
         reporterId: resolvedReporterId,
         parentKey: body.parentKey ? String(body.parentKey).toUpperCase() : null,
         labels: Array.isArray(body.labels) ? body.labels.map(String) : [],
+        ...(body.storyPoints !== undefined && body.storyPoints !== '' && { storyPoints: Number(body.storyPoints) }),
+        ...(body.dueDate ? { dueDate: new Date(String(body.dueDate)) } : {}),
         ...(body.productType !== undefined && { productType: body.productType ? String(body.productType) : null }),
         ...(body.combination !== undefined && { combination: body.combination ? String(body.combination) : null }),
         ...(body.customerName !== undefined && { customerName: body.customerName ? String(body.customerName) : null }),
