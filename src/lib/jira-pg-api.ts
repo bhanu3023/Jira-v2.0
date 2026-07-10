@@ -1114,9 +1114,9 @@ async function _handleJiraPgApi(
   // â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   if (path === 'users' && method === 'GET') {
-    // Only admins can list all users; others get only themselves
-    if (!isAdmin) return json({ error: 'Forbidden' }, 403);
+    // All authenticated users can list users (needed for queue member search)
     const users = await db.user.findMany({
+      where: { isActive: true },
       orderBy: { firstName: 'asc' },
     });
     return json(users.map(formatUser));
