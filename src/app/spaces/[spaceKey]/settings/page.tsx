@@ -248,7 +248,7 @@ function PeopleSection({
 
         {/* Members table */}
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-100">
+          <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
             <tr>
               <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Name</th>
               <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Email</th>
@@ -3296,7 +3296,7 @@ function SpaceSettingsContent() {
   );
 
   return (
-    <div className="flex gap-0 min-h-screen">
+    <div className="flex gap-0 h-screen overflow-hidden">
       {showCreateSLA && <CreateSLAModal onClose={() => setShowCreateSLA(false)} onCreate={async sla => {
         try {
           const created = await api.createSLA(spaceKey, sla);
@@ -3309,7 +3309,7 @@ function SpaceSettingsContent() {
       }} />}
 
       {/* ── LEFT SIDEBAR ── */}
-      <div className="w-56 flex-shrink-0 border-r border-gray-200 bg-white pt-3 pb-10">
+      <div className="w-56 flex-shrink-0 border-r border-gray-200 bg-white pt-3 pb-10 h-full overflow-y-auto sticky top-0">
         {/* Back to space */}
         <div className="px-3 mb-3">
           <Link
@@ -3352,7 +3352,7 @@ function SpaceSettingsContent() {
       </div>
 
       {/* ── RIGHT CONTENT ── */}
-      <div className="flex-1 px-8 pt-6 pb-10 overflow-y-auto bg-gray-50/40">
+      <div className="flex-1 px-8 pt-6 pb-10 overflow-y-auto bg-gray-50/40 h-full">
 
         {/* General */}
         {tab === 'general' && (
