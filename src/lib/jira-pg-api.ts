@@ -1352,8 +1352,9 @@ async function _handleJiraPgApi(
     const memberUserId = spaceMemberPatch[2];
     const sp = await db.space.findUnique({ where: { key }, include: { members: true } });
     if (!sp) return json({ error: 'Not found' }, 404);
-    const isSpaceAdmin = sp.members.some(m => m.userId === userId && m.role === 'admin');
-    if (!isAdmin && !isSpaceAdmin) return json({ error: 'Forbidden' }, 403);
+    const isPrivilegedGlobalPatch = ['admin', 'manager', 'lead', 'shift_lead'].includes(currentUser?.role || '');
+    const isSpaceAdmin = sp.members.some(m => m.userId === userId && ['admin', 'lead', 'shift_lead'].includes(m.role));
+    if (!isPrivilegedGlobalPatch && !isSpaceAdmin) return json({ error: 'Forbidden' }, 403);
     const body = await readJson(req);
     try { await pool.query(`ALTER TABLE space_members ADD COLUMN IF NOT EXISTS department VARCHAR(100)`); } catch {}
     if (body.role !== undefined) {

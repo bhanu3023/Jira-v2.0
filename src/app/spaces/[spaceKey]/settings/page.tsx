@@ -414,9 +414,15 @@ function PeopleSection({
                               if (!confirm(`Remove ${firstName} ${lastName} from this space?`)) return;
                               setRemovingId(m.id);
                               try {
-                                await fetch(`/api/spaces/${spaceKey}/members/${m.userId || m.id}`, { method: 'DELETE' });
-                                onReload();
-                              } finally { setRemovingId(null); }
+                                const res = await fetch(`/api/spaces/${spaceKey}/members/${m.userId || m.id}`, { method: 'DELETE' });
+                                if (!res.ok) {
+                                  const err = await res.json().catch(() => ({}));
+                                  alert(`Failed to remove member: ${err.error || res.status}`);
+                                } else {
+                                  onReload();
+                                }
+                              } catch { alert('Network error. Please try again.'); }
+                              finally { setRemovingId(null); }
                             }}
                             className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-600 hover:bg-red-50 disabled:opacity-50">
                             <Trash2 size={13} /> {removingId === m.id ? 'Removing…' : 'Delete'}
