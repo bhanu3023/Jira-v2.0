@@ -793,7 +793,7 @@ export default function Sidebar() {
                         label="Add members"
                         onClick={() => {
                           setSpaceMenuId(null);
-                          router.push(`/spaces/${space.key}?tab=members`);
+                          router.push(`/spaces/${space.key}/settings?tab=people`);
                         }}
                       />
                       <div className="my-1 h-px bg-gray-100" />
@@ -981,8 +981,10 @@ function SMSpaceSubNav({ spaceKey, pathname }: { spaceKey: string; pathname: str
     active ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
   );
 
-  // Which queues to render in the sidebar — always scoped to the user's assigned queues
-  const visibleQueues = isDeptScoped ? userQueues : customQueues;
+  // Admins, leads, and shift leads see all queues; others see only their assigned queues
+  const visibleQueues = (canManageSpace || isSpaceLead || isShiftLead(user?.id || ''))
+    ? customQueues
+    : (isDeptScoped ? userQueues : customQueues);
 
   return (
     <>
