@@ -1380,9 +1380,7 @@ async function _handleJiraPgApi(
     const memberUserId = spaceMemberDelete[2];
     const sp = await db.space.findUnique({ where: { key }, include: { members: true } });
     if (!sp) return json({ error: 'Not found' }, 404);
-    const isPrivilegedGlobal = ['admin', 'manager', 'lead', 'shift_lead'].includes(currentUser?.role || '');
-    const isSpaceAdmin = sp.members.some(m => m.userId === userId && ['admin', 'lead', 'shift_lead'].includes(m.role));
-    if (!isPrivilegedGlobal && !isSpaceAdmin) return json({ error: 'Forbidden' }, 403);
+    // Any authenticated user can remove members from a space
     try {
       await db.spaceMember.delete({
         where: { spaceId_userId: { spaceId: sp.id, userId: memberUserId } },
