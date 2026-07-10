@@ -25,12 +25,13 @@ class ApiClient {
 
     let res: Response;
     try {
-      res = await fetch(`${API_URL}${endpoint}`, {
+      const url = endpoint.startsWith('/') ? `${API_URL}${endpoint}` : `${API_URL}/${endpoint}`;
+      res = await fetch(url, {
         ...options,
         headers,
       });
     } catch {
-      const target = `${API_URL}${endpoint}`;
+      const target = endpoint.startsWith('/') ? `${API_URL}${endpoint}` : `${API_URL}/${endpoint}`;
       const hint =
         API_URL.includes('localhost:4000') || API_URL.includes('127.0.0.1:4000')
           ? ' Start the Jira API on port 4000, or unset NEXT_PUBLIC_API_URL to use the embedded /api mock from this Next app.'
