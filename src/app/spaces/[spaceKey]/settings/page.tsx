@@ -354,7 +354,7 @@ function PeopleSection({
                         {resendingId === m.id ? '...' : (resendMsg?.id === m.id ? (resendMsg?.ok ? '✓ Sent' : (resendMsg?.text ?? 'Error')) : 'Resend')}
                       </button>
                       {/* Remove member */}
-                      {!isAdmin && (
+                      {role !== 'admin' && (
                         <button
                           disabled={removingId === m.id}
                           onClick={async () => {
