@@ -1013,24 +1013,18 @@ function SMSpaceSubNav({ spaceKey, pathname }: { spaceKey: string; pathname: str
                     queueParam === subQueue && deptParam === q.name;
                   return (
                     <div key={q.id}>
-                      <div className="group flex items-center gap-1 rounded-md transition-colors hover:bg-gray-100">
+                      <div className="group relative flex items-center rounded-md transition-colors hover:bg-gray-100">
                         <Link href={`/spaces/${spaceKey}?queue=${q.id}`}
-                          className={cn('flex flex-1 items-center gap-2 px-2 py-1.5 text-[12px] transition-colors',
+                          className={cn('flex flex-1 min-w-0 items-center gap-2 px-2 py-1.5 text-[12px] transition-colors',
                             queueActive(q.id) ? 'text-blue-700' : 'text-gray-600')}>
-                          <ClipboardList size={12} className={queueActive(q.id) ? 'text-blue-500' : 'text-gray-400'} />
+                          <ClipboardList size={12} className={cn('flex-shrink-0', queueActive(q.id) ? 'text-blue-500' : 'text-gray-400')} />
                           <span className="flex-1 truncate">{q.name}</span>
                         </Link>
-                        {/* Chevron to expand sub-items */}
-                        <button
-                          onClick={e => { e.stopPropagation(); setExpandedQueueSub(isSubExpanded ? null : q.id); }}
-                          className="flex w-5 h-5 items-center justify-center rounded text-gray-400 hover:text-gray-700 flex-shrink-0">
-                          <ChevronDown size={11} className={cn('transition-transform', isSubExpanded ? '' : '-rotate-90')} />
-                        </button>
-                        {/* Three-dot menu button */}
-                        <div className="relative">
+                        {/* Three-dot menu — shown on hover, overlays chevron */}
+                        <div className="relative flex-shrink-0">
                           <button
                             onClick={e => { e.stopPropagation(); setQueueMenuOpen(isMenuOpen ? null : q.id); setQueuePanelOpen(null); }}
-                            className="hidden group-hover:flex w-6 h-6 items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200 mr-0.5">
+                            className="hidden group-hover:flex w-6 h-6 items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-200">
                             <MoreHorizontal size={13} />
                           </button>
                           {isMenuOpen && (
@@ -1055,6 +1049,12 @@ function SMSpaceSubNav({ spaceKey, pathname }: { spaceKey: string; pathname: str
                             </div>
                           )}
                         </div>
+                        {/* Chevron — always visible, expands sub-items */}
+                        <button
+                          onClick={e => { e.stopPropagation(); setExpandedQueueSub(isSubExpanded ? null : q.id); }}
+                          className="flex w-5 h-5 flex-shrink-0 items-center justify-center rounded text-gray-400 hover:text-gray-700 mr-1">
+                          <ChevronDown size={11} className={cn('transition-transform', isSubExpanded ? '' : '-rotate-90')} />
+                        </button>
                       </div>
 
                       {/* Sub-items */}
