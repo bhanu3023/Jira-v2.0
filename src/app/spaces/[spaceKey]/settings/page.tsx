@@ -235,35 +235,32 @@ function PeopleSection({
 
   return (
     <Section title="People and access" description="Manage who has access to this space and their roles.">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
 
-        {/* Sticky header row: title + add button + column names */}
-        <div className="sticky top-0 z-10 bg-white rounded-t-xl border-b border-gray-200">
-          <div className="px-5 py-3.5 flex items-center justify-between">
-            <p className="text-sm font-bold text-gray-700">Members ({currentSpace.members?.length || 0})</p>
-            <button onClick={openModal}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 text-white text-[12.5px] font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-              <Plus size={14} /> Add member
-            </button>
-          </div>
-          <table className="w-full">
-            <thead className="bg-gray-50 border-t border-gray-100">
-              <tr>
-                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Email</th>
-                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Role</th>
-                <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">Department</th>
-                <th className="px-5 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-          </table>
+        {/* Sticky bar: Members count + Add button */}
+        <div className="sticky top-0 z-20 bg-white px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+          <p className="text-sm font-bold text-gray-700">Members ({currentSpace.members?.length || 0})</p>
+          <button onClick={openModal}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 text-white text-[12.5px] font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+            <Plus size={14} /> Add member
+          </button>
         </div>
 
-        {/* Scrollable body */}
+        {/* Table with sticky thead */}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
         <table className="w-full">
           <colgroup>
-            <col className="w-[30%]" /><col className="w-[28%]" /><col className="w-[12%]" /><col className="w-[15%]" /><col className="w-[15%]" />
+            <col style={{width:'28%'}} /><col style={{width:'27%'}} /><col style={{width:'13%'}} /><col style={{width:'16%'}} /><col style={{width:'16%'}} />
           </colgroup>
+          <thead className="bg-gray-50 sticky top-0 z-10">
+            <tr>
+              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide border-b border-gray-100">Name</th>
+              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide border-b border-gray-100">Email</th>
+              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide border-b border-gray-100">Role</th>
+              <th className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide border-b border-gray-100">Department</th>
+              <th className="px-5 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wide border-b border-gray-100">Actions</th>
+            </tr>
+          </thead>
           <tbody className="divide-y divide-gray-50">
             {(currentSpace.members || []).map((m: any) => {
               const firstName = m.firstName || m.user?.firstName || '';
@@ -386,6 +383,7 @@ function PeopleSection({
             )}
           </tbody>
         </table>
+        </div>{/* end scrollable wrapper */}
       </div>
 
       {/* Add Member Modal */}
